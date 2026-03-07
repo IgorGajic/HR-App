@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TeamMember {
+    private long id;
     private String name;
     private String surname;
     private List<Task> tasks;
@@ -18,14 +19,16 @@ public class TeamMember {
         this.skills = new ArrayList<>();
     }
 
+    public long getId() { return id; }
+    public void setId(long id) { this.id = id; }
+
     public double getAverageGrade(){
+        if (grades.isEmpty()) return 0;
         double result = 0;
-        int counter = 0;
         for(Integer grade : grades){
-            counter++;
             result += grade;
         }
-        return result / counter;
+        return result / grades.size();
     }
 
     public void addTask(Task task){
