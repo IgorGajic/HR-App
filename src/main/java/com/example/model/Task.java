@@ -1,11 +1,15 @@
 package com.example.model;
 
 public class Task {
+    private long id;
     private String taskName;
     private String comment;
     private TaskStatus taskStatus;
 
     private TeamMember teamMember;
+
+    public long getId() { return id; }
+    public void setId(long id) { this.id = id; }
 
     public Task(String taskName, String comment, TeamMember teamMember) {
         this.taskName = taskName;
@@ -24,11 +28,13 @@ public class Task {
 
     public Task(String taskName) {
         this.taskName = taskName;
+        this.taskStatus = TaskStatus.PENDING;
     }
 
     public Task(String taskName, TeamMember teamMember) {
         this.taskName = taskName;
         this.teamMember = teamMember;
+        this.taskStatus = TaskStatus.PENDING;
     }
 
     public String getTaskName() {
