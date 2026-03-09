@@ -124,4 +124,110 @@ public class TeamMemberRepository {
         }
         return Optional.empty();
     }
+
+    /**
+     * Returns all non-deleted team members with their full related data (tasks, skills, grades).
+     * Uses JOINs to fetch everything in a single query, avoiding N+1 problem.
+     * Processes results to group tasks, skills, and grades per member.
+     *
+     * @return list of team member DTOs fully populated with related data
+     * @throws SQLException on database error
+     */
+    public List<com.example.dto.TeamMemberDTO> findAllWithDetails() throws SQLException {
+        // SQL with LEFT JOINs to get all data in one query
+        String sql = "SELECT tm.id, tm.name, tm.surname, " +
+                "       t.id AS task_id, t.task_name, t.comment, t.status, " +
+                "       s.skill_name, " +
+                "       g.id AS grade_id, g.grade " +
+                "FROM team_members tm " +
+                "LEFT JOIN tasks t ON tm.id = t.member_id AND t.is_deleted = 0 " +
+                "LEFT JOIN skills s ON tm.id = s.member_id " +
+                "LEFT JOIN grades g ON tm.id = g.member_id " +
+                "WHERE tm.is_deleted = 0 " +
+                "ORDER BY tm.surname, tm.name, t.id, s.skill_name, g.id";
+
+        // Map to collect data per member
+        java.util.Map<Long, MemberData> memberDataMap = new java.util.LinkedHashMap<>();
+
+        try (Statement stmt = dbManager.getConnection().createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                long memberId = rs.getLong("id");
+                String name = rs.getString("name");
+                String surname = rs.getString("surname");
+
+                // Get or create member data holder
+                MemberData data = memberDataMap.computeIfAbsent(memberId, k ->
+                        new MemberData(memberId, name, surname));
+
+                // Add task if present (not null when no tasks exist)
+                long taskId = rs.getLong("task_id");
+                if (taskId != 0) {
+                    String taskName = rs.getString("task_name");
+                    if (data.tasks.stream().noneMatch(t -> t.getId() == taskId)) {
+                        com.example.model.Task task = new com.example.model.Task(taskName);
+                        task.setId(taskId);
+                        task.setComment(rs.getString("comment"));
+                        task.setStatus(com.example.model.TaskStatus.valueOf(rs.getString("status")));
+                        data.tasks.add(task);
+                    }
+                }
+
+                // Add skill if present
+                String skillName = rs.getString("skill_name");
+                if (skillName != null && !data.skills.contains(skillName)) {
+                    data.skills.add(skillName);
+                }
+
+                // Add grade if present (track by grade ID to avoid duplicates from JOIN)
+                long gradeId = rs.getLong("grade_id");
+                if (gradeId != 0 && !data.processedGradeIds.contains(gradeId)) {
+                    int grade = rs.getInt("grade");
+                    if (!rs.wasNull()) {
+                        data.grades.add(grade);
+                        data.processedGradeIds.add(gradeId);
+                    }
+                }
+            }
+        }
+
+        // Convert to DTOs
+        return memberDataMap.values().stream()
+                .map(this::convertToDTO)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Converts aggregated member data to a DTO.
+     */
+    private com.example.dto.TeamMemberDTO convertToDTO(MemberData data) {
+        double avg = data.grades.isEmpty()
+                ? 0
+                : data.grades.stream().mapToInt(Integer::intValue).average().orElse(0);
+
+        List<com.example.dto.TaskDTO> taskDTOs = data.tasks.stream()
+                .map(t -> new com.example.dto.TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
+                .collect(java.util.stream.Collectors.toList());
+
+        return new com.example.dto.TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades);
+    }
+
+    /**
+     * Helper class to aggregate member data from JOIN results.
+     */
+    private static class MemberData {
+        long id;
+        String name;
+        String surname;
+        List<com.example.model.Task> tasks = new ArrayList<>();
+        List<String> skills = new ArrayList<>();
+        List<Integer> grades = new ArrayList<>();
+        java.util.Set<Long> processedGradeIds = new java.util.HashSet<>();
+
+        MemberData(long id, String name, String surname) {
+            this.id = id;
+            this.name = name;
+            this.surname = surname;
+        }
+    }
 }
