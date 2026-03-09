@@ -50,9 +50,9 @@ public class DatabaseManager {
      * New migrations are applied automatically; already-applied ones are skipped.
      */
     private void runMigrations() {
-        log.info("Running Flyway migrations on: {}", AppConfig.DB_URL);
+        log.info("Running Flyway migrations on: {}", AppConfig.getDbUrl());
         Flyway flyway = Flyway.configure()
-                .dataSource(AppConfig.DB_URL, null, null)
+                .dataSource(AppConfig.getDbUrl(), null, null)
                 .locations("classpath:db/migration")
                 .load();
         flyway.migrate();
@@ -65,7 +65,7 @@ public class DatabaseManager {
      */
     private void openConnection() {
         try {
-            connection = DriverManager.getConnection(AppConfig.DB_URL);
+            connection = DriverManager.getConnection(AppConfig.getDbUrl());
             try (Statement stmt = connection.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys = ON");
             }
@@ -81,6 +81,20 @@ public class DatabaseManager {
      * @return the {@link Connection} to the SQLite database
      */
     public Connection getConnection() {
+        try{
+            if (connection == null || !connection.isValid(5)) {
+
+                log.warn("Database connection is not valid, creating new one.");
+                close();
+                openConnection();
+            }
+        } catch (SQLException e) {
+
+            log.warn("Error checking database connection: {}", e.getMessage(), e);
+            close();
+            openConnection();
+        }
+
         return connection;
     }
 
