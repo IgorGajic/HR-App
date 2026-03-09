@@ -19,6 +19,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -53,6 +55,7 @@ class TeamMemberServiceTest {
         when(taskRepo.findByMemberId(anyLong())).thenReturn(Collections.emptyList());
         when(skillRepo.findByMemberId(anyLong())).thenReturn(Collections.emptyList());
         when(gradeRepo.findByMemberId(anyLong())).thenReturn(Collections.emptyList());
+        when(gradeRepo.findWithIdsByMemberId(anyLong())).thenReturn(Collections.emptyList());
 
         TeamMemberDTO result = service.createMember(CreateUpdateMemberDTO.of("Ana", "Jovic"));
 
@@ -93,6 +96,7 @@ class TeamMemberServiceTest {
         when(taskRepo.findByMemberId(5L)).thenReturn(Collections.emptyList());
         when(skillRepo.findByMemberId(5L)).thenReturn(Collections.emptyList());
         when(gradeRepo.findByMemberId(5L)).thenReturn(Collections.emptyList());
+        when(gradeRepo.findWithIdsByMemberId(5L)).thenReturn(Collections.emptyList());
 
         List<TeamMemberDTO> result = service.getAllMembers();
 
@@ -110,6 +114,7 @@ class TeamMemberServiceTest {
         when(taskRepo.findByMemberId(2L)).thenReturn(Collections.emptyList());
         when(skillRepo.findByMemberId(2L)).thenReturn(Collections.emptyList());
         when(gradeRepo.findByMemberId(2L)).thenReturn(Collections.emptyList());
+        when(gradeRepo.findWithIdsByMemberId(2L)).thenReturn(Collections.emptyList());
 
         TeamMemberDTO result = service.updateMember(2L, CreateUpdateMemberDTO.of("New", "Name"));
 
@@ -167,5 +172,54 @@ class TeamMemberServiceTest {
         service.removeSkill(1L, "JAVA");
 
         verify(skillRepo).delete("JAVA", 1L);
+    }
+
+    // ── removeGrade ───────────────────────────────────────────────────────────
+
+    @Test
+    void removeGrade_delegatesToRepository() throws SQLException {
+        service.removeGrade(42);
+
+        verify(gradeRepo).deleteById(42);
+    }
+
+    // ── updateGrade ───────────────────────────────────────────────────────────
+
+    @Test
+    void updateGrade_withValidGrade_updatesGrade() throws SQLException {
+        service.updateGrade(42, 7);
+
+        verify(gradeRepo).updateById(42, 7);
+    }
+
+    @Test
+    void updateGrade_withMinGrade_updatesGrade() throws SQLException {
+        service.updateGrade(1, 1);
+
+        verify(gradeRepo).updateById(1, 1);
+    }
+
+    @Test
+    void updateGrade_withMaxGrade_updatesGrade() throws SQLException {
+        service.updateGrade(1, 10);
+
+        verify(gradeRepo).updateById(1, 10);
+    }
+
+    @Test
+    void updateGrade_withGradeTooHigh_throwsValidationException() {
+        assertThrows(ValidationException.class, () -> service.updateGrade(1, 11));
+    }
+
+    @Test
+    void updateGrade_withGradeTooLow_throwsValidationException() {
+        assertThrows(ValidationException.class, () -> service.updateGrade(1, 0));
+    }
+
+    @Test
+    void updateGrade_withTooHighGrade_doesNotCallRepository() throws SQLException {
+        assertThrows(ValidationException.class, () -> service.updateGrade(1, 11));
+
+        verify(gradeRepo, never()).updateById(anyInt(), anyInt());
     }
 }
