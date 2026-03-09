@@ -35,5 +35,5 @@ build/
 ### Mac OS ###
 .DS_Store
 
-# Local database file
+### Database ###
 hrapp.db
