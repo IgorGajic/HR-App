@@ -214,6 +214,42 @@ public class TeamMemberService {
         }
     }
 
+    /**
+     * Removes a grade by its row ID.
+     *
+     * @param gradeId the grade row's database ID
+     * @throws HRAppException on database error
+     */
+    public void removeGrade(int gradeId) {
+        try {
+            gradeRepo.deleteById(gradeId);
+        } catch (SQLException e) {
+            log.error("Failed to remove grade id={}", gradeId, e);
+            throw new HRAppException("Failed to remove grade.", e);
+        }
+    }
+
+    /**
+     * Updates the value of an existing grade row.
+     *
+     * @param gradeId  the grade row's database ID
+     * @param newGrade the new grade value (must be within {@link AppConfig#GRADE_MIN}–{@link AppConfig#GRADE_MAX})
+     * @throws ValidationException if the grade is out of range
+     * @throws HRAppException      on database error
+     */
+    public void updateGrade(int gradeId, int newGrade) {
+        if (newGrade < AppConfig.GRADE_MIN || newGrade > AppConfig.GRADE_MAX) {
+            throw new ValidationException(
+                    "Grade must be between " + AppConfig.GRADE_MIN + " and " + AppConfig.GRADE_MAX + ".");
+        }
+        try {
+            gradeRepo.updateById(gradeId, newGrade);
+        } catch (SQLException e) {
+            log.error("Failed to update grade id={}", gradeId, e);
+            throw new HRAppException("Failed to update grade.", e);
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     /**
@@ -224,9 +260,10 @@ public class TeamMemberService {
      */
     private TeamMemberDTO buildDTO(TeamMember member) {
         try {
-            List<Task> tasks     = taskRepo.findByMemberId(member.getId());
-            List<String> skills  = skillRepo.findByMemberId(member.getId());
-            List<Integer> grades = gradeRepo.findByMemberId(member.getId());
+            List<Task> tasks          = taskRepo.findByMemberId(member.getId());
+            List<String> skills       = skillRepo.findByMemberId(member.getId());
+            List<Integer> grades      = gradeRepo.findByMemberId(member.getId());
+            List<int[]> gradeEntries  = gradeRepo.findWithIdsByMemberId(member.getId());
 
             double avg = grades.isEmpty()
                     ? 0
@@ -237,7 +274,7 @@ public class TeamMemberService {
                     .collect(Collectors.toList());
 
             return new TeamMemberDTO(member.getId(), member.getName(), member.getSurname(),
-                    avg, taskDTOs, skills, grades);
+                    avg, taskDTOs, skills, grades, gradeEntries);
         } catch (SQLException e) {
             log.error("Failed to build DTO for member id={}", member.getId(), e);
             throw new HRAppException("Failed to load member details.", e);

@@ -14,6 +14,7 @@ import com.example.view.dialog.AddGradeDialog;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -49,8 +50,8 @@ public class MainStage extends Stage {
     private ListView<String> skillListView;
 
     // ── Right panel — grades ─────────────────────────────────────────────────
-    private final ObservableList<Integer> gradeList = FXCollections.observableArrayList();
-    private ListView<Integer> gradeListView;
+    private final ObservableList<int[]> gradeList = FXCollections.observableArrayList();
+    private ListView<int[]> gradeListView;
 
     // ── Header labels ────────────────────────────────────────────────────────
     private Label memberHeaderLabel;
@@ -126,7 +127,7 @@ public class MainStage extends Stage {
     // ── Left panel: member list ───────────────────────────────────────────────
 
     /**
-     * Builds the left panel containing the team members {@link TableView}.
+     * Builds the left panel containing a search field and the team members {@link TableView}.
      *
      * @return the configured panel
      */
@@ -134,7 +135,21 @@ public class MainStage extends Stage {
         Label title = new Label("Team Members");
         title.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
 
-        memberTable = new TableView<>(memberList);
+        //Search field
+        TextField searchField = new TextField();
+        searchField.setPromptText("Search by name…");
+
+        FilteredList<TeamMemberDTO> filteredMembers = new FilteredList<>(memberList, m -> true);
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            String filter = newVal == null ? "" : newVal.trim().toLowerCase();
+            filteredMembers.setPredicate(m ->
+                filter.isEmpty() ||
+                m.getName().toLowerCase().contains(filter) ||
+                m.getSurname().toLowerCase().contains(filter)
+            );
+        });
+
+        memberTable = new TableView<>(filteredMembers);
         memberTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         memberTable.setPlaceholder(new Label("No team members yet."));
 
@@ -161,7 +176,7 @@ public class MainStage extends Stage {
         memberTable.getSelectionModel().selectedItemProperty()
                 .addListener((obs, old, selected) -> onMemberSelected(selected));
 
-        VBox panel = new VBox(8, title, memberTable);
+        VBox panel = new VBox(8, title, searchField, memberTable);
         panel.setPadding(new Insets(10));
         VBox.setVgrow(memberTable, Priority.ALWAYS);
         return panel;
@@ -256,19 +271,35 @@ public class MainStage extends Stage {
     }
 
     /**
-     * Builds the Grades tab with a grade list, an average label, and an add button.
+     * Builds the Grades tab with a grade list, an average label, and add/edit/remove buttons.
      *
      * @return the configured {@link Tab}
      */
     private Tab buildGradesTab() {
         gradeListView = new ListView<>(gradeList);
+        gradeListView.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(int[] entry, boolean empty) {
+                super.updateItem(entry, empty);
+                setText(empty || entry == null ? null : String.valueOf(entry[1]));
+            }
+        });
+
         avgGradeDetailLabel = new Label("Average: N/A");
         avgGradeDetailLabel.setStyle("-fx-font-size: 13; -fx-font-weight: bold;");
 
-        Button addBtn = new Button("Add Grade");
-        addBtn.setOnAction(e -> handleAddGrade());
+        Button addBtn    = new Button("Add Grade");
+        Button editBtn   = new Button("Edit Grade");
+        Button removeBtn = new Button("Remove Grade");
 
-        VBox content = new VBox(8, gradeListView, avgGradeDetailLabel, new HBox(addBtn));
+        addBtn.setOnAction(e    -> handleAddGrade());
+        editBtn.setOnAction(e   -> handleEditGrade());
+        removeBtn.setOnAction(e -> handleRemoveGrade());
+
+        HBox buttons = new HBox(8, addBtn, editBtn, removeBtn);
+        buttons.setPadding(new Insets(5, 0, 0, 0));
+
+        VBox content = new VBox(8, gradeListView, avgGradeDetailLabel, buttons);
         content.setPadding(new Insets(10));
         VBox.setVgrow(gradeListView, Priority.ALWAYS);
 
@@ -359,7 +390,7 @@ public class MainStage extends Stage {
         refreshAvgLabels(member.getAverageGrade());
         taskList.setAll(member.getTasks());
         skillList.setAll(member.getSkills());
-        gradeList.setAll(member.getGrades());
+        gradeList.setAll(member.getGradeEntries());
     }
 
     /**
@@ -542,6 +573,36 @@ public class MainStage extends Stage {
                         GlobalExceptionHandler.handle(e);
                     }
                 });
+    }
+
+    /** Opens the edit-grade dialog for the selected grade and persists the result. */
+    private void handleEditGrade() {
+        int[] selected = gradeListView.getSelectionModel().getSelectedItem();
+        if (selected == null) { showWarning("Please select a grade to edit."); return; }
+
+        TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
+        new AddGradeDialog(member.getName() + " " + member.getSurname())
+                .showAndWait().ifPresent(newGrade -> {
+                    try {
+                        memberService.updateGrade(selected[0], newGrade);
+                        loadMembers();
+                    } catch (Exception e) {
+                        GlobalExceptionHandler.handle(e);
+                    }
+                });
+    }
+
+    /** Confirms and removes the selected grade. */
+    private void handleRemoveGrade() {
+        int[] selected = gradeListView.getSelectionModel().getSelectedItem();
+        if (selected == null) { showWarning("Please select a grade to remove."); return; }
+
+        try {
+            memberService.removeGrade(selected[0]);
+            loadMembers();
+        } catch (Exception e) {
+            GlobalExceptionHandler.handle(e);
+        }
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────

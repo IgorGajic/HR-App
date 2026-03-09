@@ -63,4 +63,57 @@ public class GradeRepository {
         }
         return grades;
     }
+
+    /**
+     * Returns all grades for the given member as {@code int[]{id, grade}} pairs, in insertion order.
+     *
+     * @param memberId the owning member's database ID
+     * @return list of two-element arrays where index 0 is the row id and index 1 is the grade value
+     * @throws SQLException on database error
+     */
+    public List<int[]> findWithIdsByMemberId(long memberId) throws SQLException {
+        String sql = "SELECT id, grade FROM grades WHERE member_id = ? ORDER BY id";
+        List<int[]> result = new ArrayList<>();
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setLong(1, memberId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new int[]{rs.getInt("id"), rs.getInt("grade")});
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Deletes a grade row by its primary key.
+     *
+     * @param id the grade row id
+     * @throws SQLException on database error
+     */
+    public void deleteById(int id) throws SQLException {
+        String sql = "DELETE FROM grades WHERE id = ?";
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        }
+        log.info("Deleted grade id={}", id);
+    }
+
+    /**
+     * Updates the value of an existing grade row.
+     *
+     * @param id    the grade row id
+     * @param grade the new grade value
+     * @throws SQLException on database error
+     */
+    public void updateById(int id, int grade) throws SQLException {
+        String sql = "UPDATE grades SET grade = ? WHERE id = ?";
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setInt(1, grade);
+            ps.setInt(2, id);
+            ps.executeUpdate();
+        }
+        log.info("Updated grade id={} to value={}", id, grade);
+    }
 }
