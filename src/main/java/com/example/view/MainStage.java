@@ -14,6 +14,7 @@ import com.example.view.dialog.AddGradeDialog;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -126,7 +127,7 @@ public class MainStage extends Stage {
     // ── Left panel: member list ───────────────────────────────────────────────
 
     /**
-     * Builds the left panel containing the team members {@link TableView}.
+     * Builds the left panel containing a search field and the team members {@link TableView}.
      *
      * @return the configured panel
      */
@@ -134,7 +135,21 @@ public class MainStage extends Stage {
         Label title = new Label("Team Members");
         title.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
 
-        memberTable = new TableView<>(memberList);
+        //Search field
+        TextField searchField = new TextField();
+        searchField.setPromptText("Search by name…");
+
+        FilteredList<TeamMemberDTO> filteredMembers = new FilteredList<>(memberList, m -> true);
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            String filter = newVal == null ? "" : newVal.trim().toLowerCase();
+            filteredMembers.setPredicate(m ->
+                filter.isEmpty() ||
+                m.getName().toLowerCase().contains(filter) ||
+                m.getSurname().toLowerCase().contains(filter)
+            );
+        });
+
+        memberTable = new TableView<>(filteredMembers);
         memberTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         memberTable.setPlaceholder(new Label("No team members yet."));
 
@@ -161,7 +176,7 @@ public class MainStage extends Stage {
         memberTable.getSelectionModel().selectedItemProperty()
                 .addListener((obs, old, selected) -> onMemberSelected(selected));
 
-        VBox panel = new VBox(8, title, memberTable);
+        VBox panel = new VBox(8, title, searchField, memberTable);
         panel.setPadding(new Insets(10));
         VBox.setVgrow(memberTable, Priority.ALWAYS);
         return panel;
