@@ -56,19 +56,40 @@ public class TeamMemberService {
 
     /**
      * Returns all non-deleted team members with their full related data (tasks, skills, grades).
+     * Uses a single JOIN-based query to avoid N+1 problem.
      *
      * @return list of team member DTOs
      * @throws HRAppException on database error
      */
     public List<TeamMemberDTO> getAllMembers() {
         try {
-            List<TeamMember> members = memberRepo.findAll();
-            return members.stream()
-                    .map(this::buildDTO)
-                    .collect(Collectors.toList());
+            List<TeamMemberDTO> members = memberRepo.findAllWithDetails();
+            log.info("Loaded {} team members", members.size());
+            return members;
         } catch (SQLException e) {
             log.error("Failed to load team members", e);
             throw new HRAppException("Failed to load team members.", e);
+        }
+    }
+
+    /**
+     * Returns a single non-deleted team member with all their related data (tasks, skills, grades).
+     * More efficient than getAllMembers() when you only need one member.
+     *
+     * @param id the member's database ID
+     * @return the team member DTO, or throws exception if not found
+     * @throws MemberNotFoundException if no member exists with the given id
+     * @throws HRAppException on database error
+     */
+    public TeamMemberDTO getMemberById(long id) {
+        try {
+            TeamMember member = memberRepo.findById(id)
+                    .orElseThrow(() -> new MemberNotFoundException(id));
+            log.info("Loaded team member id={}", id);
+            return buildDTO(member);
+        } catch (SQLException e) {
+            log.error("Failed to load team member id={}", id, e);
+            throw new HRAppException("Failed to load team member details.", e);
         }
     }
 

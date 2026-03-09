@@ -323,6 +323,30 @@ public class MainStage extends Stage {
     }
 
     /**
+     * Refreshes only the currently selected member's data from the database.
+     */
+    private void refreshSelectedMember() {
+        TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+
+        long selectedId = selected.getId();
+        try {
+            TeamMemberDTO updated = memberService.getMemberById(selectedId);
+            // Update the member in the list
+            int index = memberList.indexOf(selected);
+            if (index >= 0) {
+                memberList.set(index, updated);
+                // Re-select the updated member in the table
+                memberTable.getSelectionModel().select(index);
+                // Refresh the detail panel with the updated data
+                onMemberSelected(updated);
+            }
+        } catch (Exception e) {
+            GlobalExceptionHandler.handle(e);
+        }
+    }
+
+    /**
      * Returns the ID of the currently selected member, or -1 if nothing is selected.
      *
      * @return selected member ID or -1
@@ -388,8 +412,12 @@ public class MainStage extends Stage {
     private void handleAddMember() {
         new AddEditMemberDialog(null).showAndWait().ifPresent(dto -> {
             try {
-                memberService.createMember(dto);
-                loadMembers();
+                TeamMemberDTO newMember = memberService.createMember(dto);
+                memberList.add(newMember);
+                // Re-select the newly created member in the table
+                memberTable.getSelectionModel().select(newMember);
+                // Refresh the detail panel with the new member's data
+                onMemberSelected(newMember);
             } catch (Exception e) {
                 GlobalExceptionHandler.handle(e);
             }
@@ -403,8 +431,16 @@ public class MainStage extends Stage {
 
         new AddEditMemberDialog(selected).showAndWait().ifPresent(dto -> {
             try {
-                memberService.updateMember(selected.getId(), dto);
-                loadMembers();
+                TeamMemberDTO updated = memberService.updateMember(selected.getId(), dto);
+                // Update only the selected member in the list
+                int index = memberList.indexOf(selected);
+                if (index >= 0) {
+                    memberList.set(index, updated);
+                    // Re-select the updated member in the table
+                    memberTable.getSelectionModel().select(index);
+                    // Refresh the detail panel with the updated data
+                    onMemberSelected(updated);
+                }
             } catch (Exception e) {
                 GlobalExceptionHandler.handle(e);
             }
@@ -424,8 +460,13 @@ public class MainStage extends Stage {
             if (btn == ButtonType.YES) {
                 try {
                     memberService.deleteMember(selected.getId());
-                    loadMembers();
-                    clearDetailPanel();
+                    memberList.remove(selected);
+                    // Select the next available member if any exist
+                    if (!memberList.isEmpty()) {
+                        memberTable.getSelectionModel().selectFirst();
+                    } else {
+                        clearDetailPanel();
+                    }
                 } catch (Exception e) {
                     GlobalExceptionHandler.handle(e);
                 }
@@ -443,7 +484,7 @@ public class MainStage extends Stage {
         new AddEditTaskDialog(null).showAndWait().ifPresent(dto -> {
             try {
                 taskService.addTask(member.getId(), dto);
-                loadMembers();
+                refreshSelectedMember();
             } catch (Exception e) {
                 GlobalExceptionHandler.handle(e);
             }
@@ -458,7 +499,7 @@ public class MainStage extends Stage {
         new AddEditTaskDialog(selected).showAndWait().ifPresent(dto -> {
             try {
                 taskService.updateTask(selected.getId(), dto);
-                loadMembers();
+                refreshSelectedMember();
             } catch (Exception e) {
                 GlobalExceptionHandler.handle(e);
             }
@@ -472,7 +513,7 @@ public class MainStage extends Stage {
 
         try {
             taskService.deleteTask(selected.getId());
-            loadMembers();
+            refreshSelectedMember();
         } catch (Exception e) {
             GlobalExceptionHandler.handle(e);
         }
@@ -494,7 +535,7 @@ public class MainStage extends Stage {
             if (!skill.trim().isEmpty()) {
                 try {
                     memberService.addSkill(member.getId(), skill);
-                    loadMembers();
+                    refreshSelectedMember();
                 } catch (Exception e) {
                     GlobalExceptionHandler.handle(e);
                 }
@@ -510,7 +551,7 @@ public class MainStage extends Stage {
 
         try {
             memberService.removeSkill(member.getId(), selectedSkill);
-            loadMembers();
+            refreshSelectedMember();
         } catch (Exception e) {
             GlobalExceptionHandler.handle(e);
         }
@@ -527,7 +568,7 @@ public class MainStage extends Stage {
                 .showAndWait().ifPresent(grade -> {
                     try {
                         memberService.addGrade(member.getId(), grade);
-                        loadMembers();
+                        refreshSelectedMember();
                     } catch (Exception e) {
                         GlobalExceptionHandler.handle(e);
                     }
