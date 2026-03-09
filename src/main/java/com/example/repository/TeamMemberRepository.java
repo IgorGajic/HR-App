@@ -179,13 +179,19 @@ public class TeamMemberRepository {
                     data.skills.add(skillName);
                 }
 
-                // Add grade if present (track by grade ID to avoid duplicates from JOIN)
-                long gradeId = rs.getLong("grade_id");
-                if (gradeId != 0 && !data.processedGradeIds.contains(gradeId)) {
-                    int grade = rs.getInt("grade");
-                    if (!rs.wasNull()) {
-                        data.grades.add(grade);
-                        data.processedGradeIds.add(gradeId);
+                int gradeId = rs.getInt("grade_id");
+                int grade = rs.getInt("grade");
+
+                // Check if gradeId is valid and grade is not null
+                if (gradeId != 0 && !rs.wasNull()) {
+
+                    data.grades.add(grade);
+
+                    // Add to gradeEntries if not already added
+                    boolean alreadyExists = data.gradeEntries.stream()
+                            .anyMatch(e -> e[0] == gradeId);
+                    if (!alreadyExists) {
+                        data.gradeEntries.add(new int[]{gradeId, grade});
                     }
                 }
             }
@@ -209,7 +215,7 @@ public class TeamMemberRepository {
                 .map(t -> new com.example.dto.TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
                 .collect(java.util.stream.Collectors.toList());
 
-        return new com.example.dto.TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades);
+        return new com.example.dto.TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades, data.gradeEntries);
     }
 
     /**
@@ -222,7 +228,7 @@ public class TeamMemberRepository {
         List<com.example.model.Task> tasks = new ArrayList<>();
         List<String> skills = new ArrayList<>();
         List<Integer> grades = new ArrayList<>();
-        java.util.Set<Long> processedGradeIds = new java.util.HashSet<>();
+        List<int[]> gradeEntries = new ArrayList<>();
 
         MemberData(long id, String name, String surname) {
             this.id = id;
