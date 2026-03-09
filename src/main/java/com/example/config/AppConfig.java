@@ -1,7 +1,6 @@
 package com.example.config;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
@@ -15,21 +14,53 @@ import java.util.Properties;
  */
 public final class AppConfig {
 
+    private static final String PROPERTIES_FILE = "app.properties";
     private static final Properties props = new Properties();
 
     static{
-        try{
-            InputStream input = AppConfig.class.getClassLoader().getResourceAsStream("app.properties");
+        File file = new File(PROPERTIES_FILE);
 
-            if(input == null){
+        if(file.exists()){
 
-                throw new RuntimeException("app.properties not found");
+            try {
+                InputStream input = new FileInputStream(file);
+                props.load(input);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }else{
+
+            setDefaultProps();
+
+            try{
+                OutputStream output = new FileOutputStream(file);
+                props.store(output, "Default properties configuration");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
 
-            props.load(input);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load app.properties", e);
+            System.out.println(PROPERTIES_FILE + " created with default values.");
         }
+
+    }
+
+    private static void setDefaultProps() {
+        props.setProperty("db.url", "jdbc:sqlite:hrapp.db");
+
+        props.setProperty("log.dir", System.getProperty("user.home") + "/hrapp-logs");
+
+        props.setProperty("app.title", "HR App");
+        props.setProperty("app.width", "1100");
+        props.setProperty("app.height", "700");
+        props.setProperty("divider.position", "0.35");
+
+        props.setProperty("grade.min", "1");
+        props.setProperty("grade.max", "10");
+
+        props.setProperty("max.name.length", "100");
+        props.setProperty("max.skill.length", "100");
+        props.setProperty("max.task.name.length", "200");
+        props.setProperty("max.comment.length", "500");
     }
 
     public static String getDbUrl() {
