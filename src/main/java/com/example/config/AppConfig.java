@@ -1,7 +1,9 @@
 package com.example.config;
 
+import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Properties;
 
 /**
  * Central application configuration.
@@ -10,51 +12,106 @@ import java.nio.file.Paths;
  * The SQLite database file ({@code hrapp.db}) is stored in the current working directory
  * so it can easily be located, backed up, and shared with colleagues.
  */
-public final class
-AppConfig {
+public final class AppConfig {
 
-    /**
-     * JDBC connection URL for the SQLite database.
-     * The file is placed in the application's working directory for easy sharing.
-     */
-    public static final String DB_URL = "jdbc:sqlite:hrapp.db";
+    private static final String PROPERTIES_FILE = "app.properties";
+    private static final Properties props = new Properties();
 
-    /**
-     * Directory used for application log files (separate from the shareable DB file).
-     */
-    public static final Path LOG_DIR = Paths.get(System.getProperty("user.home"), "hrapp-logs");
+    static{
+        File file = new File(PROPERTIES_FILE);
 
-    /** Main window title. */
-    public static final String APP_TITLE = "HR App";
+        if(file.exists()){
 
-    /** Main window width in pixels. */
-    public static final int APP_WIDTH = 1100;
+            try {
+                InputStream input = new FileInputStream(file);
+                props.load(input);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }else{
 
-    /** Main window height in pixels. */
-    public static final int APP_HEIGHT = 700;
+            setDefaultProps();
 
-    /** SplitPane divider position (0.0 – 1.0). */
-    public static final double DIVIDER_POSITION = 0.35;
+            try{
+                OutputStream output = new FileOutputStream(file);
+                props.store(output, "Default properties configuration");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
 
-    /** Minimum allowed grade value (inclusive). */
-    public static final int GRADE_MIN = 1;
+            System.out.println(PROPERTIES_FILE + " created with default values.");
+        }
 
-    /** Maximum allowed grade value (inclusive). */
-    public static final int GRADE_MAX = 10;
-
-    /** Maximum length for a member's first or last name. */
-    public static final int MAX_NAME_LENGTH = 100;
-
-    /** Maximum length for a skill name. */
-    public static final int MAX_SKILL_LENGTH = 100;
-
-    /** Maximum length for a task name. */
-    public static final int MAX_TASK_NAME_LENGTH = 200;
-
-    /** Maximum length for a task comment. */
-    public static final int MAX_COMMENT_LENGTH = 500;
-
-    private AppConfig() {
-        // Utility class — not instantiable.
     }
+
+    private static void setDefaultProps() {
+        props.setProperty("db.url", "jdbc:sqlite:hrapp.db");
+
+        props.setProperty("log.dir", System.getProperty("user.home") + "/hrapp-logs");
+
+        props.setProperty("app.title", "HR App");
+        props.setProperty("app.width", "1100");
+        props.setProperty("app.height", "700");
+        props.setProperty("divider.position", "0.35");
+
+        props.setProperty("grade.min", "1");
+        props.setProperty("grade.max", "10");
+
+        props.setProperty("max.name.length", "100");
+        props.setProperty("max.skill.length", "100");
+        props.setProperty("max.task.name.length", "200");
+        props.setProperty("max.comment.length", "500");
+    }
+
+    public static String getDbUrl() {
+        return props.getProperty("db.url");
+    }
+
+    public static Path getLogDir() {
+        String dir = props.getProperty("log.dir")
+                .replace("${user.home}", System.getProperty("user.home"));
+        return Paths.get(dir);
+    }
+
+    public static String getAppTitle() {
+        return props.getProperty("app.title");
+    }
+
+    public static int getAppWidth() {
+        return Integer.parseInt(props.getProperty("app.width"));
+    }
+
+    public static int getAppHeight() {
+        return Integer.parseInt(props.getProperty("app.height"));
+    }
+
+    public static double getDividerPosition() {
+        return Double.parseDouble(props.getProperty("divider.position"));
+    }
+
+    public static int getGradeMin() {
+        return Integer.parseInt(props.getProperty("grade.min"));
+    }
+
+    public static int getGradeMax() {
+        return Integer.parseInt(props.getProperty("grade.max"));
+    }
+
+    public static int getMaxNameLength() {
+        return Integer.parseInt(props.getProperty("max.name.length"));
+    }
+
+    public static int getMaxSkillLength() {
+        return Integer.parseInt(props.getProperty("max.skill.length"));
+    }
+
+    public static int getMaxTaskNameLength() {
+        return Integer.parseInt(props.getProperty("max.task.name.length"));
+    }
+
+    public static int getMaxCommentLength() {
+        return Integer.parseInt(props.getProperty("max.comment.length"));
+    }
+
+    private AppConfig(){}
 }

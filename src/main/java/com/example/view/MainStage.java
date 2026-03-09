@@ -76,9 +76,9 @@ public class MainStage extends Stage {
      * Builds the scene graph and loads initial data.
      */
     private void initialise() {
-        setTitle(AppConfig.APP_TITLE);
-        setWidth(AppConfig.APP_WIDTH);
-        setHeight(AppConfig.APP_HEIGHT);
+        setTitle(AppConfig.getAppTitle());
+        setWidth(AppConfig.getAppWidth());
+        setHeight(AppConfig.getAppHeight());
 
         BorderPane root = new BorderPane();
         root.setTop(buildToolBar());
@@ -120,7 +120,7 @@ public class MainStage extends Stage {
      */
     private SplitPane buildMainContent() {
         SplitPane splitPane = new SplitPane(buildMemberListPanel(), buildDetailPanel());
-        splitPane.setDividerPositions(AppConfig.DIVIDER_POSITION);
+        splitPane.setDividerPositions(AppConfig.getDividerPosition());
         return splitPane;
     }
 

@@ -36,11 +36,11 @@ public class CreateUpdateMemberDTO {
         if (trimmedSurname.isEmpty()) {
             throw new ValidationException("Surname cannot be blank.");
         }
-        if (trimmedName.length() > AppConfig.MAX_NAME_LENGTH) {
-            throw new ValidationException("Name exceeds maximum length of " + AppConfig.MAX_NAME_LENGTH + " characters.");
+        if (trimmedName.length() > AppConfig.getMaxNameLength()) {
+            throw new ValidationException("Name exceeds maximum length of " + AppConfig.getMaxNameLength() + " characters.");
         }
-        if (trimmedSurname.length() > AppConfig.MAX_NAME_LENGTH) {
-            throw new ValidationException("Surname exceeds maximum length of " + AppConfig.MAX_NAME_LENGTH + " characters.");
+        if (trimmedSurname.length() > AppConfig.getMaxNameLength()) {
+            throw new ValidationException("Surname exceeds maximum length of " + AppConfig.getMaxNameLength() + " characters.");
         }
 
         return new CreateUpdateMemberDTO(trimmedName, trimmedSurname);

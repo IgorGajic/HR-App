@@ -145,8 +145,8 @@ public class TeamMemberService {
         if (normalised.isEmpty()) {
             throw new ValidationException("Skill name cannot be blank.");
         }
-        if (normalised.length() > AppConfig.MAX_SKILL_LENGTH) {
-            throw new ValidationException("Skill name exceeds maximum length of " + AppConfig.MAX_SKILL_LENGTH + " characters.");
+        if (normalised.length() > AppConfig.getMaxSkillLength()) {
+            throw new ValidationException("Skill name exceeds maximum length of " + AppConfig.getMaxSkillLength() + " characters.");
         }
         try {
             skillRepo.save(normalised, memberId);
@@ -176,14 +176,14 @@ public class TeamMemberService {
      * Adds a grade to a team member's grade history.
      *
      * @param memberId the member's database ID
-     * @param grade    the grade value (must be within {@link AppConfig#GRADE_MIN}–{@link AppConfig#GRADE_MAX})
+     * @param grade    the grade value (must be within {@link AppConfig#getGradeMin()}–{@link AppConfig#getGradeMax()})
      * @throws ValidationException if the grade is out of range
      * @throws HRAppException      on database error
      */
     public void addGrade(long memberId, int grade) {
-        if (grade < AppConfig.GRADE_MIN || grade > AppConfig.GRADE_MAX) {
+        if (grade < AppConfig.getGradeMin() || grade > AppConfig.getGradeMax()) {
             throw new ValidationException(
-                    "Grade must be between " + AppConfig.GRADE_MIN + " and " + AppConfig.GRADE_MAX + ".");
+                    "Grade must be between " + AppConfig.getGradeMin() + " and " + AppConfig.getGradeMax() + ".");
         }
         try {
             gradeRepo.save(grade, memberId);
@@ -212,14 +212,14 @@ public class TeamMemberService {
      * Updates the value of an existing grade row.
      *
      * @param gradeId  the grade row's database ID
-     * @param newGrade the new grade value (must be within {@link AppConfig#GRADE_MIN}–{@link AppConfig#GRADE_MAX})
+     * @param newGrade the new grade value (must be within {@link AppConfig#getGradeMin()}–{@link AppConfig#getGradeMax()})
      * @throws ValidationException if the grade is out of range
      * @throws HRAppException      on database error
      */
     public void updateGrade(int gradeId, int newGrade) {
-        if (newGrade < AppConfig.GRADE_MIN || newGrade > AppConfig.GRADE_MAX) {
+        if (newGrade < AppConfig.getGradeMin() || newGrade > AppConfig.getGradeMax()) {
             throw new ValidationException(
-                    "Grade must be between " + AppConfig.GRADE_MIN + " and " + AppConfig.GRADE_MAX + ".");
+                    "Grade must be between " + AppConfig.getGradeMin() + " and " + AppConfig.getGradeMax() + ".");
         }
         try {
             gradeRepo.updateById(gradeId, newGrade);
