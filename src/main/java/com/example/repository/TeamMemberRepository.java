@@ -1,13 +1,16 @@
 package com.example.repository;
 
+import com.example.dto.TaskDTO;
+import com.example.dto.TeamMemberDTO;
+import com.example.model.Task;
+import com.example.model.TaskStatus;
 import com.example.model.TeamMember;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Repository responsible for all CRUD operations on the {@code team_members} table.
@@ -133,7 +136,7 @@ public class TeamMemberRepository {
      * @return list of team member DTOs fully populated with related data
      * @throws SQLException on database error
      */
-    public List<com.example.dto.TeamMemberDTO> findAllWithDetails() throws SQLException {
+    public List<TeamMemberDTO> findAllWithDetails() throws SQLException {
         // SQL with LEFT JOINs to get all data in one query
         String sql = "SELECT tm.id, tm.name, tm.surname, " +
                 "       t.id AS task_id, t.task_name, t.comment, t.status, " +
@@ -147,7 +150,7 @@ public class TeamMemberRepository {
                 "ORDER BY tm.surname, tm.name, t.id, s.skill_name, g.id";
 
         // Map to collect data per member
-        java.util.Map<Long, MemberData> memberDataMap = new java.util.LinkedHashMap<>();
+        Map<Long, MemberData> memberDataMap = new LinkedHashMap<>();
 
         try (Statement stmt = dbManager.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -165,10 +168,10 @@ public class TeamMemberRepository {
                 if (taskId != 0) {
                     String taskName = rs.getString("task_name");
                     if (data.tasks.stream().noneMatch(t -> t.getId() == taskId)) {
-                        com.example.model.Task task = new com.example.model.Task(taskName);
+                        Task task = new Task(taskName);
                         task.setId(taskId);
                         task.setComment(rs.getString("comment"));
-                        task.setStatus(com.example.model.TaskStatus.valueOf(rs.getString("status")));
+                        task.setStatus(TaskStatus.valueOf(rs.getString("status")));
                         data.tasks.add(task);
                     }
                 }
@@ -200,22 +203,22 @@ public class TeamMemberRepository {
         // Convert to DTOs
         return memberDataMap.values().stream()
                 .map(this::convertToDTO)
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 
     /**
      * Converts aggregated member data to a DTO.
      */
-    private com.example.dto.TeamMemberDTO convertToDTO(MemberData data) {
+    private TeamMemberDTO convertToDTO(MemberData data) {
         double avg = data.grades.isEmpty()
                 ? 0
                 : data.grades.stream().mapToInt(Integer::intValue).average().orElse(0);
 
-        List<com.example.dto.TaskDTO> taskDTOs = data.tasks.stream()
-                .map(t -> new com.example.dto.TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
-                .collect(java.util.stream.Collectors.toList());
+        List<TaskDTO> taskDTOs = data.tasks.stream()
+                .map(t -> new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
+                .collect(Collectors.toList());
 
-        return new com.example.dto.TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades, data.gradeEntries);
+        return new TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades, data.gradeEntries);
     }
 
     /**
@@ -225,7 +228,7 @@ public class TeamMemberRepository {
         long id;
         String name;
         String surname;
-        List<com.example.model.Task> tasks = new ArrayList<>();
+        List<Task> tasks = new ArrayList<>();
         List<String> skills = new ArrayList<>();
         List<Integer> grades = new ArrayList<>();
         List<int[]> gradeEntries = new ArrayList<>();
