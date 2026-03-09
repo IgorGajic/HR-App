@@ -38,11 +38,11 @@ public class CreateUpdateTaskDTO {
         if (trimmedName.isEmpty()) {
             throw new ValidationException("Task name cannot be blank.");
         }
-        if (trimmedName.length() > AppConfig.MAX_TASK_NAME_LENGTH) {
-            throw new ValidationException("Task name exceeds maximum length of " + AppConfig.MAX_TASK_NAME_LENGTH + " characters.");
+        if (trimmedName.length() > AppConfig.getMaxTaskNameLength()) {
+            throw new ValidationException("Task name exceeds maximum length of " + AppConfig.getMaxTaskNameLength() + " characters.");
         }
-        if (trimmedComment.length() > AppConfig.MAX_COMMENT_LENGTH) {
-            throw new ValidationException("Comment exceeds maximum length of " + AppConfig.MAX_COMMENT_LENGTH + " characters.");
+        if (trimmedComment.length() > AppConfig.getMaxSkillLength()) {
+            throw new ValidationException("Comment exceeds maximum length of " + AppConfig.getMaxCommentLength() + " characters.");
         }
         if (status == null) {
             throw new ValidationException("Task status cannot be null.");

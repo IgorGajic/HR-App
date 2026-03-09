@@ -23,12 +23,12 @@ public class AddGradeDialog extends Dialog<Integer> {
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
         getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
 
-        Spinner<Integer> gradeSpinner = new Spinner<>(AppConfig.GRADE_MIN, AppConfig.GRADE_MAX, AppConfig.GRADE_MIN);
+        Spinner<Integer> gradeSpinner = new Spinner<>(AppConfig.getGradeMin(), AppConfig.getGradeMax(), AppConfig.getGradeMin());
         gradeSpinner.setEditable(true);
         gradeSpinner.setPrefWidth(80);
 
         VBox content = new VBox(10,
-                new Label("Grade (" + AppConfig.GRADE_MIN + " – " + AppConfig.GRADE_MAX + "):"),
+                new Label("Grade (" + AppConfig.getGradeMin() + " – " + AppConfig.getGradeMax() + "):"),
                 gradeSpinner);
         content.setPadding(new Insets(20));
         getDialogPane().setContent(content);
