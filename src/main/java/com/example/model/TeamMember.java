@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TeamMember {
-    private static final Logger log = LoggerFactory.getLogger(TeamMember.class);
     private long id;
     private String name;
     private String surname;

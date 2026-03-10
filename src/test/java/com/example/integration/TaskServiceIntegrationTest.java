@@ -1,11 +1,11 @@
 package com.example.integration;
 
 
+import com.example.config.AppConfig;
 import com.example.dto.CreateUpdateMemberDTO;
 import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
 import com.example.dto.TeamMemberDTO;
-import com.example.exception.HRAppException;
 import com.example.exception.ValidationException;
 import com.example.model.TaskStatus;
 import org.junit.jupiter.api.Test;
@@ -38,6 +38,7 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
         assertEquals("Write tests",        task.getTaskName());
         assertEquals("Cover all branches", task.getComment());
         assertEquals(TaskStatus.PENDING,   task.getStatus());
+        assertNull(task.getGrade());
     }
 
     @Test
@@ -56,6 +57,14 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
                 () -> taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task", "c", null)));
     }
 
+    @Test
+    void addTask_withCompletedStatus_throwsValidationException() {
+        long memberId = createMember("A", "B");
+
+        assertThrows(ValidationException.class,
+                () -> taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task", "", TaskStatus.COMPLETED)));
+    }
+
     // ── getTasksForMember ─────────────────────────────────────────────────────
 
     @Test
@@ -70,7 +79,9 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
         long memberId = createMember("Multi", "Tasks");
         taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task A", "", TaskStatus.PENDING));
         taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task B", "", TaskStatus.FAILED));
-        taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task C", "", TaskStatus.COMPLETED));
+        // mark one as completed via updateTask
+        TaskDTO t = taskService.addTask(memberId, CreateUpdateTaskDTO.of("Task C", "", TaskStatus.PENDING));
+        taskService.updateTask(memberId, t.getId(), CreateUpdateTaskDTO.of("Task C", "", TaskStatus.COMPLETED), 7);
 
         List<TaskDTO> tasks = taskService.getTasksForMember(memberId);
 
@@ -104,35 +115,51 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
     // ── updateTask ────────────────────────────────────────────────────────────
 
     @Test
-    void updateTask_changesAllFields() {
+    void updateTask_toCompleted_savesGrade() {
         long memberId = createMember("Update", "Task");
         TaskDTO original = taskService.addTask(memberId,
                 CreateUpdateTaskDTO.of("Original", "Old comment", TaskStatus.PENDING));
 
-        TaskDTO updated = taskService.updateTask(original.getId(),
-                CreateUpdateTaskDTO.of("Updated name", "New comment", TaskStatus.COMPLETED));
+        TaskDTO updated = taskService.updateTask(memberId, original.getId(),
+                CreateUpdateTaskDTO.of("Updated name", "New comment", TaskStatus.COMPLETED), 8);
 
         assertEquals("Updated name",       updated.getTaskName());
         assertEquals("New comment",        updated.getComment());
         assertEquals(TaskStatus.COMPLETED, updated.getStatus());
+        assertEquals(8,                    updated.getGrade());
 
-        // Verify the change is persisted
-        List<TaskDTO> tasks = taskService.getTasksForMember(memberId);
-        assertEquals("Updated name", tasks.get(0).getTaskName());
-        assertEquals(TaskStatus.COMPLETED, tasks.get(0).getStatus());
+        TaskDTO reloaded = taskService.getTasksForMember(memberId).get(0);
+        assertEquals(TaskStatus.COMPLETED, reloaded.getStatus());
+        assertEquals(8,                    reloaded.getGrade());
     }
 
     @Test
-    void updateTask_allStatuses_persist() {
-        long memberId = createMember("Status", "Test");
+    void updateTask_fromCompletedToPending_removesGrade() {
+        long memberId = createMember("Reopen", "Task");
         TaskDTO task = taskService.addTask(memberId,
-                CreateUpdateTaskDTO.of("Status task", "", TaskStatus.PENDING));
+                CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING));
+        taskService.updateTask(memberId, task.getId(),
+                CreateUpdateTaskDTO.of("Task", "", TaskStatus.COMPLETED), 9);
 
-        for (TaskStatus status : TaskStatus.values()) {
-            TaskDTO updated = taskService.updateTask(task.getId(),
-                    CreateUpdateTaskDTO.of("Status task", "", status));
-            assertEquals(status, updated.getStatus());
-        }
+        taskService.updateTask(memberId, task.getId(),
+                CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING), null);
+
+        TaskDTO reloaded = taskService.getTasksForMember(memberId).get(0);
+        assertEquals(TaskStatus.PENDING, reloaded.getStatus());
+        assertNull(reloaded.getGrade());
+    }
+
+    @Test
+    void updateTask_failedStatus_automaticallyGetsGradeMin() {
+        long memberId = createMember("Fail", "Task");
+        TaskDTO task = taskService.addTask(memberId,
+                CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING));
+
+        TaskDTO updated = taskService.updateTask(memberId, task.getId(),
+                CreateUpdateTaskDTO.of("Task", "", TaskStatus.FAILED), null);
+
+        assertEquals(TaskStatus.FAILED,               updated.getStatus());
+        assertEquals(AppConfig.getGradeMin(),          updated.getGrade());
     }
 
     // ── deleteTask ────────────────────────────────────────────────────────────
@@ -173,7 +200,7 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
 
         assertEquals(1, all.size());
         assertEquals(1, all.get(0).getTasks().size());
-        assertEquals("Inline task", all.get(0).getTasks().get(0).getTaskName());
+        assertEquals("Inline task",      all.get(0).getTasks().get(0).getTaskName());
         assertEquals(TaskStatus.PENDING, all.get(0).getTasks().get(0).getStatus());
     }
 

@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Repository responsible for all CRUD operations on the {@code tasks} table.
@@ -100,6 +101,30 @@ public class TaskRepository {
             ps.executeUpdate();
         }
         log.info("Soft-deleted all tasks for member id={}", memberId);
+    }
+
+    /**
+     * Returns a single non-deleted task by its primary key.
+     *
+     * @param taskId the task's database ID
+     * @return an Optional containing the task, or empty if not found
+     * @throws SQLException on database error
+     */
+    public Optional<Task> findById(long taskId) throws SQLException {
+        String sql = "SELECT id, task_name, comment, status FROM tasks WHERE id = ? AND is_deleted = 0";
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setLong(1, taskId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Task task = new Task(rs.getString("task_name"));
+                    task.setId(rs.getLong("id"));
+                    task.setComment(rs.getString("comment"));
+                    task.setStatus(TaskStatus.valueOf(rs.getString("status")));
+                    return Optional.of(task);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     /**

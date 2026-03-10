@@ -17,7 +17,6 @@ public class TeamMemberDTO {
     private final List<TaskDTO> tasks;
     private final List<String> skills;
     private final List<Integer> grades;
-    private final List<int[]> gradeEntries;
 
     /**
      * Constructs a TeamMemberDTO with all fields.
@@ -29,11 +28,9 @@ public class TeamMemberDTO {
      * @param tasks        list of task DTOs
      * @param skills       list of skill names
      * @param grades       list of individual grade values
-     * @param gradeEntries list of {@code int[]{gradeRowId, gradeValue}} pairs
      */
     public TeamMemberDTO(long id, String name, String surname, double averageGrade,
-                         List<TaskDTO> tasks, List<String> skills, List<Integer> grades,
-                         List<int[]> gradeEntries) {
+                         List<TaskDTO> tasks, List<String> skills, List<Integer> grades) {
         this.id = id;
         this.name = name;
         this.surname = surname;
@@ -41,7 +38,6 @@ public class TeamMemberDTO {
         this.tasks = List.copyOf(tasks);
         this.skills = List.copyOf(skills);
         this.grades = List.copyOf(grades);
-        this.gradeEntries = List.copyOf(gradeEntries);
     }
 
     /** @return the number of tasks currently in PENDING status */
@@ -79,7 +75,4 @@ public class TeamMemberDTO {
 
     /** @return an unmodifiable list of grade values */
     public List<Integer> getGrades() { return grades; }
-
-    /** @return an unmodifiable list of {@code int[]{gradeRowId, gradeValue}} pairs */
-    public List<int[]> getGradeEntries() { return gradeEntries; }
 }

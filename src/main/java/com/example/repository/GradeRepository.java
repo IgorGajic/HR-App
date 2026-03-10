@@ -8,8 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository responsible for all CRUD operations on the {@code grades} table.
- * Grades are append-only; individual grades are never modified or deleted.
+ * Repository for CRUD operations on the {@code grades} table.
+ * Each grade is tied to exactly one completed task (UNIQUE constraint on task_id).
  */
 public class GradeRepository {
 
@@ -17,37 +17,65 @@ public class GradeRepository {
 
     private final DatabaseManager dbManager;
 
-    /**
-     * Constructs the repository with the required database manager (constructor injection).
-     *
-     * @param dbManager the shared database manager
-     */
     public GradeRepository(DatabaseManager dbManager) {
         this.dbManager = dbManager;
     }
 
     /**
-     * Inserts a new grade for the given member.
+     * Inserts a grade for the given task / member pair.
      *
-     * @param grade    the grade value (must be within the configured min/max range)
-     * @param memberId the owning member's database ID
+     * @param grade    grade value
+     * @param memberId owning member's DB id
+     * @param taskId   the completed task's DB id
      * @throws SQLException on database error
      */
-    public void save(int grade, long memberId) throws SQLException {
-        String sql = "INSERT INTO grades (grade, member_id) VALUES (?, ?)";
+    public void saveForTask(int grade, long memberId, long taskId) throws SQLException {
+        String sql = "INSERT INTO grades (grade, member_id, task_id) VALUES (?, ?, ?)";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setInt(1, grade);
             ps.setLong(2, memberId);
+            ps.setLong(3, taskId);
             ps.executeUpdate();
         }
-        log.info("Saved grade={} for member id={}", grade, memberId);
+        log.info("Saved grade={} for member id={} task id={}", grade, memberId, taskId);
     }
 
     /**
-     * Returns all grades for the given member in insertion order.
+     * Returns the grade for a specific task, or {@code null} if none exists.
      *
-     * @param memberId the owning member's database ID
-     * @return list of grade values
+     * @param taskId the task's DB id
+     * @throws SQLException on database error
+     */
+    public Integer findByTaskId(long taskId) throws SQLException {
+        String sql = "SELECT grade FROM grades WHERE task_id = ?";
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setLong(1, taskId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt("grade") : null;
+            }
+        }
+    }
+
+    /**
+     * Returns true if a grade already exists for the given task.
+     *
+     * @param taskId the task's DB id
+     * @throws SQLException on database error
+     */
+    public boolean existsForTask(long taskId) throws SQLException {
+        String sql = "SELECT 1 FROM grades WHERE task_id = ?";
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+            ps.setLong(1, taskId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /**
+     * Returns all grade values for a member (used for average calculation).
+     *
+     * @param memberId the owning member's DB id
      * @throws SQLException on database error
      */
     public List<Integer> findByMemberId(long memberId) throws SQLException {
@@ -56,64 +84,41 @@ public class GradeRepository {
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setLong(1, memberId);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    grades.add(rs.getInt("grade"));
-                }
+                while (rs.next()) grades.add(rs.getInt("grade"));
             }
         }
         return grades;
     }
 
     /**
-     * Returns all grades for the given member as {@code int[]{id, grade}} pairs, in insertion order.
+     * Updates the grade value for an existing grade row.
      *
-     * @param memberId the owning member's database ID
-     * @return list of two-element arrays where index 0 is the row id and index 1 is the grade value
+     * @param taskId   the task whose grade to update
+     * @param newGrade the new grade value
      * @throws SQLException on database error
      */
-    public List<int[]> findWithIdsByMemberId(long memberId) throws SQLException {
-        String sql = "SELECT id, grade FROM grades WHERE member_id = ? ORDER BY id";
-        List<int[]> result = new ArrayList<>();
+    public void updateByTaskId(long taskId, int newGrade) throws SQLException {
+        String sql = "UPDATE grades SET grade = ? WHERE task_id = ?";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
-            ps.setLong(1, memberId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(new int[]{rs.getInt("id"), rs.getInt("grade")});
-                }
-            }
+            ps.setInt(1, newGrade);
+            ps.setLong(2, taskId);
+            ps.executeUpdate();
         }
-        return result;
+        log.info("Updated grade for task id={} to value={}", taskId, newGrade);
     }
 
     /**
-     * Deletes a grade row by its primary key.
+     * Deletes the grade for a given task (e.g. task moved away from COMPLETED).
      *
-     * @param id the grade row id
+     * @param taskId the task's DB id
      * @throws SQLException on database error
      */
-    public void deleteById(int id) throws SQLException {
-        String sql = "DELETE FROM grades WHERE id = ?";
+    public void deleteByTaskId(long taskId) throws SQLException {
+        String sql = "DELETE FROM grades WHERE task_id = ?";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
-            ps.setInt(1, id);
+            ps.setLong(1, taskId);
             ps.executeUpdate();
         }
-        log.info("Deleted grade id={}", id);
-    }
-
-    /**
-     * Updates the value of an existing grade row.
-     *
-     * @param id    the grade row id
-     * @param grade the new grade value
-     * @throws SQLException on database error
-     */
-    public void updateById(int id, int grade) throws SQLException {
-        String sql = "UPDATE grades SET grade = ? WHERE id = ?";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
-            ps.setInt(1, grade);
-            ps.setInt(2, id);
-            ps.executeUpdate();
-        }
-        log.info("Updated grade id={} to value={}", id, grade);
+        log.info("Deleted grade for task id={}", taskId);
     }
 }

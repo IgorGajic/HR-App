@@ -1,5 +1,7 @@
 package com.example.config;
 
+import com.example.exception.GlobalExceptionHandler;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -22,11 +24,10 @@ public final class AppConfig {
 
         if(file.exists()){
 
-            try {
-                InputStream input = new FileInputStream(file);
+            try (InputStream input = new FileInputStream(file)) {
                 props.load(input);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                GlobalExceptionHandler.handle(e);
             }
         }else{
 
@@ -36,7 +37,7 @@ public final class AppConfig {
                 OutputStream output = new FileOutputStream(file);
                 props.store(output, "Default properties configuration");
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                GlobalExceptionHandler.handle(e);
             }
 
             System.out.println(PROPERTIES_FILE + " created with default values.");

@@ -65,7 +65,7 @@ class ModelAndDtoTest {
                 new TaskDTO(3L, "T3", TaskStatus.COMPLETED, "")
         );
         TeamMemberDTO dto = new TeamMemberDTO(1L, "A", "B", 0.0,
-                tasks, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                tasks, Collections.emptyList(), Collections.emptyList());
 
         assertEquals(2, dto.getPendingCount());
     }
@@ -78,7 +78,7 @@ class ModelAndDtoTest {
                 new TaskDTO(3L, "T3", TaskStatus.COMPLETED, "")
         );
         TeamMemberDTO dto = new TeamMemberDTO(1L, "A", "B", 0.0,
-                tasks, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                tasks, Collections.emptyList(), Collections.emptyList());
 
         assertEquals(2, dto.getCompletedCount());
     }
@@ -91,7 +91,7 @@ class ModelAndDtoTest {
                 new TaskDTO(3L, "T3", TaskStatus.FAILED,    "")
         );
         TeamMemberDTO dto = new TeamMemberDTO(1L, "A", "B", 0.0,
-                tasks, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                tasks, Collections.emptyList(), Collections.emptyList());
 
         assertEquals(2, dto.getFailedCount());
     }
@@ -99,7 +99,7 @@ class ModelAndDtoTest {
     @Test
     void teamMemberDTO_countHelpers_withNoTasks_returnZero() {
         TeamMemberDTO dto = new TeamMemberDTO(1L, "A", "B", 0.0,
-                Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
 
         assertEquals(0, dto.getPendingCount());
         assertEquals(0, dto.getCompletedCount());
@@ -133,7 +133,7 @@ class ModelAndDtoTest {
 
     @Test
     void createUpdateTaskDTO_commentTooLong_throwsValidationException() {
-        String longComment = "A".repeat(101);
+        String longComment = "A".repeat(501);
         assertThrows(ValidationException.class,
                 () -> CreateUpdateTaskDTO.of("Task", longComment, TaskStatus.PENDING));
     }
