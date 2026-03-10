@@ -25,7 +25,7 @@ public class TaskDTO {
         this.id = id;
         this.taskName = taskName;
         this.status = status;
-        this.comment = comment != null ? comment : "";
+        this.comment = comment;
     }
 
     /** @return the task's database ID */

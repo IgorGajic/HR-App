@@ -1,8 +1,6 @@
 package com.example.view;
 
 import com.example.config.AppConfig;
-import com.example.dto.CreateUpdateMemberDTO;
-import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
 import com.example.dto.TeamMemberDTO;
 import com.example.exception.GlobalExceptionHandler;

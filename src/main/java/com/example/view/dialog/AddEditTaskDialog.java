@@ -59,7 +59,8 @@ public class AddEditTaskDialog extends Dialog<CreateUpdateTaskDTO> {
 
         // Disable Save while the task name is blank
         Button saveButton = (Button) getDialogPane().lookupButton(saveButtonType);
-        saveButton.setDisable(true);
+        if(taskNameField.getText().isEmpty())
+            saveButton.setDisable(true);
         taskNameField.textProperty().addListener((obs, o, n) ->
                 saveButton.setDisable(n.trim().isEmpty()));
 
