@@ -34,6 +34,17 @@ public class DatabaseManager {
     }
 
     /**
+     * Constructor for testing. Accepts an already-open connection
+     * so tests can inject an in-memory SQLite connection without touching the
+     * singleton or running Flyway against a real file.
+     *
+     * @param connection an open JDBC connection (caller is responsible for schema setup)
+     */
+    public DatabaseManager(Connection connection) {
+        this.connection = connection;
+    }
+
+    /**
      * Returns the singleton instance, creating it on first call.
      *
      * @return the shared {@link DatabaseManager} instance
