@@ -224,7 +224,8 @@ public class TeamMemberService {
             List<TaskDTO> taskDTOs = tasks.stream()
                     .map(t -> {
                         Integer grade = null;
-                        if (t.getStatus() == com.example.model.TaskStatus.COMPLETED) {
+                        if (t.getStatus() == com.example.model.TaskStatus.COMPLETED
+                                || t.getStatus() == com.example.model.TaskStatus.FAILED) {
                             try {
                                 grade = gradeRepo.findByTaskId(t.getId());
                             } catch (SQLException e) {

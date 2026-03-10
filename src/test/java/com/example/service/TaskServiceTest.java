@@ -1,5 +1,6 @@
 package com.example.service;
 
+import com.example.config.AppConfig;
 import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
 import com.example.exception.HRAppException;
@@ -89,6 +90,19 @@ class TaskServiceTest {
     }
 
     @Test
+    void addTask_withFailedStatus_savesGradeMinAndReturnsDTO() throws SQLException {
+        doAnswer(inv -> { ((Task) inv.getArgument(0)).setId(10L); return null; })
+                .when(taskRepo).save(any(), anyLong());
+
+        TaskDTO result = service.addTask(1L, CreateUpdateTaskDTO.of("Failed task", "", TaskStatus.FAILED));
+
+        assertEquals(TaskStatus.FAILED,        result.getStatus());
+        assertEquals(AppConfig.getGradeMin(),  result.getGrade());
+        verify(gradeRepo).saveForTask(AppConfig.getGradeMin(), 1L, 10L);
+        verify(txManager).commit();
+    }
+
+    @Test
     void addTask_onSQLException_throwsHRAppException() throws SQLException {
         doThrow(new SQLException("db error")).when(taskRepo).save(any(), anyLong());
         assertThrows(HRAppException.class,
@@ -162,6 +176,40 @@ class TaskServiceTest {
     }
 
     @Test
+    void updateTask_toFailed_automaticallyAssignsGradeMin() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.PENDING)));
+        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Failed task", "", TaskStatus.FAILED);
+
+        TaskDTO result = service.updateTask(1L, 5L, dto, null);
+
+        assertEquals(TaskStatus.FAILED,        result.getStatus());
+        assertEquals(AppConfig.getGradeMin(),  result.getGrade());
+        verify(gradeRepo).saveForTask(AppConfig.getGradeMin(), 1L, 5L);
+        verify(txManager).commit();
+    }
+
+    @Test
+    void updateTask_alreadyFailed_updatesGradeToMin() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.FAILED)));
+
+        service.updateTask(1L, 5L, CreateUpdateTaskDTO.of("Still failed", "", TaskStatus.FAILED), null);
+
+        verify(gradeRepo).updateByTaskId(5L, AppConfig.getGradeMin());
+        verify(gradeRepo, never()).saveForTask(anyInt(), anyLong(), anyLong());
+    }
+
+    @Test
+    void updateTask_fromFailedToPending_deletesGrade() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.FAILED)));
+
+        service.updateTask(1L, 5L, CreateUpdateTaskDTO.of("Back", "", TaskStatus.PENDING), null);
+
+        verify(gradeRepo).deleteByTaskId(5L);
+        verify(gradeRepo, never()).saveForTask(anyInt(), anyLong(), anyLong());
+        verify(txManager).commit();
+    }
+
+    @Test
     void updateTask_onSQLException_rollsBackAndThrowsHRAppException() throws SQLException {
         when(taskRepo.findById(anyLong())).thenThrow(new SQLException("db error"));
 
@@ -224,6 +272,18 @@ class TaskServiceTest {
         List<TaskDTO> result = service.getTasksForMember(1L);
 
         assertEquals(8, result.get(0).getGrade());
+        verify(gradeRepo).findByTaskId(3L);
+    }
+
+    @Test
+    void getTasksForMember_failedTask_loadsGradeMin() throws SQLException {
+        Task task = taskStub(3L, TaskStatus.FAILED);
+        when(taskRepo.findByMemberId(1L)).thenReturn(List.of(task));
+        when(gradeRepo.findByTaskId(3L)).thenReturn(AppConfig.getGradeMin());
+
+        List<TaskDTO> result = service.getTasksForMember(1L);
+
+        assertEquals(AppConfig.getGradeMin(), result.get(0).getGrade());
         verify(gradeRepo).findByTaskId(3L);
     }
 

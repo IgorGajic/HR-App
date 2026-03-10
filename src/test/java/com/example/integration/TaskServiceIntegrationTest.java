@@ -1,6 +1,7 @@
 package com.example.integration;
 
 
+import com.example.config.AppConfig;
 import com.example.dto.CreateUpdateMemberDTO;
 import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
@@ -149,7 +150,7 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void updateTask_failedStatus_noGradeRequired() {
+    void updateTask_failedStatus_automaticallyGetsGradeMin() {
         long memberId = createMember("Fail", "Task");
         TaskDTO task = taskService.addTask(memberId,
                 CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING));
@@ -157,8 +158,8 @@ class TaskServiceIntegrationTest extends IntegrationTestBase {
         TaskDTO updated = taskService.updateTask(memberId, task.getId(),
                 CreateUpdateTaskDTO.of("Task", "", TaskStatus.FAILED), null);
 
-        assertEquals(TaskStatus.FAILED, updated.getStatus());
-        assertNull(updated.getGrade());
+        assertEquals(TaskStatus.FAILED,               updated.getStatus());
+        assertEquals(AppConfig.getGradeMin(),          updated.getGrade());
     }
 
     // ── deleteTask ────────────────────────────────────────────────────────────

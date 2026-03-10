@@ -55,8 +55,9 @@ public class TaskService {
     }
 
     /**
-     * Creates a new task for the given member. New tasks are always PENDING — a grade
-     * cannot be assigned at creation time.
+     * Creates a new task for the given member.
+     * COMPLETED status is not allowed at creation time — start as PENDING then mark complete.
+     * FAILED tasks automatically receive grade {@link AppConfig#getGradeMin()}.
      */
     public TaskDTO addTask(long memberId, CreateUpdateTaskDTO dto) {
         if (dto.getStatus() == TaskStatus.COMPLETED) {
@@ -67,6 +68,23 @@ public class TaskService {
             Task task = new Task(dto.getTaskName());
             task.setComment(dto.getComment());
             task.setStatus(dto.getStatus());
+
+            if (dto.getStatus() == TaskStatus.FAILED) {
+                transactionManager.beginTransaction();
+                try {
+                    taskRepo.save(task, memberId);
+                    gradeRepo.saveForTask(AppConfig.getGradeMin(), memberId, task.getId());
+                    transactionManager.commit();
+                } catch (SQLException e) {
+                    transactionManager.rollback();
+                    throw e;
+                }
+                log.info("Added FAILED task '{}' with grade {} to member id={}",
+                        dto.getTaskName(), AppConfig.getGradeMin(), memberId);
+                return new TaskDTO(task.getId(), task.getTaskName(), task.getStatus(),
+                        task.getComment(), AppConfig.getGradeMin());
+            }
+
             taskRepo.save(task, memberId);
             log.info("Added task '{}' to member id={}", dto.getTaskName(), memberId);
             return new TaskDTO(task.getId(), task.getTaskName(), task.getStatus(), task.getComment());
@@ -93,6 +111,10 @@ public class TaskService {
         if (dto.getStatus() == TaskStatus.COMPLETED) {
             validateGrade(grade);
         }
+        // FAILED tasks always receive grade 1 automatically
+        if (dto.getStatus() == TaskStatus.FAILED) {
+            grade = AppConfig.getGradeMin();
+        }
         try {
             transactionManager.beginTransaction();
             try {
@@ -109,28 +131,27 @@ public class TaskService {
                 taskRepo.update(updated);
 
                 // grade bookkeeping
-                if (dto.getStatus() == TaskStatus.COMPLETED) {
-                    if (previousStatus == TaskStatus.COMPLETED) {
+                if (dto.getStatus() == TaskStatus.COMPLETED || dto.getStatus() == TaskStatus.FAILED) {
+                    boolean hadGrade = previousStatus == TaskStatus.COMPLETED || previousStatus == TaskStatus.FAILED;
+                    if (hadGrade) {
                         // already had a grade — update it
                         gradeRepo.updateByTaskId(taskId, grade);
                     } else {
-                        // newly completed — insert grade
+                        // newly graded — insert grade
                         gradeRepo.saveForTask(grade, memberId, taskId);
                     }
-                } else if (previousStatus == TaskStatus.COMPLETED) {
-                    // moved away from COMPLETED — remove the grade
+                } else if (previousStatus == TaskStatus.COMPLETED || previousStatus == TaskStatus.FAILED) {
+                    // moved back to PENDING — remove the grade
                     gradeRepo.deleteByTaskId(taskId);
                 }
 
                 transactionManager.commit();
                 log.info("Updated task id={} status={}", taskId, dto.getStatus());
 
-                Integer savedGrade = dto.getStatus() == TaskStatus.COMPLETED ? grade : null;
+                Integer savedGrade = (dto.getStatus() == TaskStatus.COMPLETED || dto.getStatus() == TaskStatus.FAILED)
+                        ? grade : null;
                 return new TaskDTO(taskId, dto.getTaskName(), dto.getStatus(), dto.getComment(), savedGrade);
-            } catch (HRAppException e) {
-                transactionManager.rollback();
-                throw e;
-            } catch (SQLException e) {
+            } catch (HRAppException | SQLException e) {
                 transactionManager.rollback();
                 throw e;
             }
@@ -175,7 +196,7 @@ public class TaskService {
 
     private TaskDTO toDTO(Task t) {
         try {
-            Integer grade = t.getStatus() == TaskStatus.COMPLETED
+            Integer grade = (t.getStatus() == TaskStatus.COMPLETED || t.getStatus() == TaskStatus.FAILED)
                     ? gradeRepo.findByTaskId(t.getId())
                     : null;
             return new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment(), grade);
