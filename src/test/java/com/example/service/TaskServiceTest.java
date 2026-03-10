@@ -2,9 +2,11 @@ package com.example.service;
 
 import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
+import com.example.exception.HRAppException;
 import com.example.exception.ValidationException;
 import com.example.model.Task;
 import com.example.model.TaskStatus;
+import com.example.repository.GradeRepository;
 import com.example.repository.TaskRepository;
 import com.example.repository.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,14 +33,25 @@ import static org.mockito.Mockito.*;
 class TaskServiceTest {
 
     @Mock private TaskRepository     taskRepo;
+    @Mock private GradeRepository    gradeRepo;
     @Mock private TransactionManager txManager;
 
     private TaskService service;
 
-    /** Sets up the service with a mocked repository before each test. */
     @BeforeEach
     void setUp() {
-        service = new TaskService(taskRepo, txManager);
+        service = new TaskService(taskRepo, gradeRepo, txManager);
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /** Creates a persisted Task stub with the given id and status. */
+    private Task taskStub(long id, TaskStatus status) {
+        Task t = new Task("Task " + id);
+        t.setId(id);
+        t.setStatus(status);
+        t.setComment("");
+        return t;
     }
 
     // ── addTask ───────────────────────────────────────────────────────────────
@@ -68,27 +82,117 @@ class TaskServiceTest {
                 () -> service.addTask(1L, CreateUpdateTaskDTO.of("Task", "comment", null)));
     }
 
+    @Test
+    void addTask_withCompletedStatus_throwsValidationException() {
+        assertThrows(ValidationException.class,
+                () -> service.addTask(1L, CreateUpdateTaskDTO.of("Task", "comment", TaskStatus.COMPLETED)));
+    }
+
+    @Test
+    void addTask_onSQLException_throwsHRAppException() throws SQLException {
+        doThrow(new SQLException("db error")).when(taskRepo).save(any(), anyLong());
+        assertThrows(HRAppException.class,
+                () -> service.addTask(1L, CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING)));
+    }
+
     // ── updateTask ────────────────────────────────────────────────────────────
 
     @Test
-    void updateTask_updatesAllFieldsAndReturnsDTO() throws SQLException {
-        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Updated name", "New comment", TaskStatus.COMPLETED);
+    void updateTask_toCompleted_savesGradeAndReturnsDTO() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.PENDING)));
+        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Done task", "", TaskStatus.COMPLETED);
 
-        TaskDTO result = service.updateTask(5L, dto);
+        TaskDTO result = service.updateTask(1L, 5L, dto, 8);
 
-        assertEquals("Updated name",        result.getTaskName());
-        assertEquals(TaskStatus.COMPLETED,  result.getStatus());
-        assertEquals("New comment",         result.getComment());
-        verify(taskRepo).update(any(Task.class));
+        assertEquals("Done task",         result.getTaskName());
+        assertEquals(TaskStatus.COMPLETED, result.getStatus());
+        assertEquals(8,                    result.getGrade());
+        verify(gradeRepo).saveForTask(8, 1L, 5L);
+        verify(txManager).commit();
+        verify(txManager, never()).rollback();
+    }
+
+    @Test
+    void updateTask_alreadyCompleted_updatesGrade() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.COMPLETED)));
+        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Done task", "", TaskStatus.COMPLETED);
+
+        service.updateTask(1L, 5L, dto, 9);
+
+        verify(gradeRepo).updateByTaskId(5L, 9);
+        verify(gradeRepo, never()).saveForTask(anyInt(), anyLong(), anyLong());
+    }
+
+    @Test
+    void updateTask_fromCompletedToPending_deletesGrade() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.COMPLETED)));
+        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Back to pending", "", TaskStatus.PENDING);
+
+        service.updateTask(1L, 5L, dto, null);
+
+        verify(gradeRepo).deleteByTaskId(5L);
+        verify(gradeRepo, never()).saveForTask(anyInt(), anyLong(), anyLong());
+        verify(txManager).commit();
+    }
+
+    @Test
+    void updateTask_pendingToPending_noGradeInteraction() throws SQLException {
+        when(taskRepo.findById(5L)).thenReturn(Optional.of(taskStub(5L, TaskStatus.PENDING)));
+        CreateUpdateTaskDTO dto = CreateUpdateTaskDTO.of("Still pending", "", TaskStatus.PENDING);
+
+        service.updateTask(1L, 5L, dto, null);
+
+        verify(gradeRepo, never()).saveForTask(anyInt(), anyLong(), anyLong());
+        verify(gradeRepo, never()).updateByTaskId(anyLong(), anyInt());
+        verify(gradeRepo, never()).deleteByTaskId(anyLong());
+    }
+
+    @Test
+    void updateTask_toCompleted_withNullGrade_throwsValidationException() {
+        assertThrows(ValidationException.class,
+                () -> service.updateTask(1L, 5L,
+                        CreateUpdateTaskDTO.of("Task", "", TaskStatus.COMPLETED), null));
+    }
+
+    @Test
+    void updateTask_toCompleted_withOutOfRangeGrade_throwsValidationException() {
+        assertThrows(ValidationException.class,
+                () -> service.updateTask(1L, 5L,
+                        CreateUpdateTaskDTO.of("Task", "", TaskStatus.COMPLETED), 99));
+    }
+
+    @Test
+    void updateTask_onSQLException_rollsBackAndThrowsHRAppException() throws SQLException {
+        when(taskRepo.findById(anyLong())).thenThrow(new SQLException("db error"));
+
+        assertThrows(HRAppException.class,
+                () -> service.updateTask(1L, 5L,
+                        CreateUpdateTaskDTO.of("Task", "", TaskStatus.PENDING), null));
+
+        verify(txManager).rollback();
+        verify(txManager, never()).commit();
     }
 
     // ── deleteTask ────────────────────────────────────────────────────────────
 
     @Test
-    void deleteTask_callsSoftDelete() throws SQLException {
+    void deleteTask_softDeletesTaskAndRemovesGrade() throws SQLException {
         service.deleteTask(7L);
 
+        verify(gradeRepo).deleteByTaskId(7L);
         verify(taskRepo).softDelete(7L);
+        verify(txManager).commit();
+        verify(txManager, never()).rollback();
+    }
+
+    @Test
+    void deleteTask_onSQLException_rollsBackAndThrowsHRAppException() throws SQLException {
+        doThrow(new SQLException("db error")).when(taskRepo).softDelete(anyLong());
+
+        assertThrows(HRAppException.class, () -> service.deleteTask(7L));
+
+        verify(txManager).rollback();
+        verify(txManager, never()).commit();
     }
 
     // ── getTasksForMember ─────────────────────────────────────────────────────
@@ -96,25 +200,36 @@ class TaskServiceTest {
     @Test
     void getTasksForMember_whenNoTasks_returnsEmptyList() throws SQLException {
         when(taskRepo.findByMemberId(anyLong())).thenReturn(Collections.emptyList());
-
-        List<TaskDTO> result = service.getTasksForMember(1L);
-
-        assertTrue(result.isEmpty());
+        assertTrue(service.getTasksForMember(1L).isEmpty());
     }
 
     @Test
-    void getTasksForMember_mapsToDTOs() throws SQLException {
-        Task task = new Task("Fix bug");
-        task.setId(3L);
-        task.setStatus(TaskStatus.COMPLETED);
-        task.setComment("Fixed in PR #42");
+    void getTasksForMember_pendingTask_hasNullGrade() throws SQLException {
+        Task task = taskStub(3L, TaskStatus.PENDING);
         when(taskRepo.findByMemberId(1L)).thenReturn(List.of(task));
 
         List<TaskDTO> result = service.getTasksForMember(1L);
 
-        assertEquals(1,                  result.size());
-        assertEquals("Fix bug",          result.get(0).getTaskName());
-        assertEquals(TaskStatus.COMPLETED, result.get(0).getStatus());
-        assertEquals("Fixed in PR #42", result.get(0).getComment());
+        assertEquals(1, result.size());
+        assertNull(result.get(0).getGrade());
+        verify(gradeRepo, never()).findByTaskId(anyLong());
+    }
+
+    @Test
+    void getTasksForMember_completedTask_loadsGrade() throws SQLException {
+        Task task = taskStub(3L, TaskStatus.COMPLETED);
+        when(taskRepo.findByMemberId(1L)).thenReturn(List.of(task));
+        when(gradeRepo.findByTaskId(3L)).thenReturn(8);
+
+        List<TaskDTO> result = service.getTasksForMember(1L);
+
+        assertEquals(8, result.get(0).getGrade());
+        verify(gradeRepo).findByTaskId(3L);
+    }
+
+    @Test
+    void getTasksForMember_onSQLException_throwsHRAppException() throws SQLException {
+        when(taskRepo.findByMemberId(anyLong())).thenThrow(new SQLException("db error"));
+        assertThrows(HRAppException.class, () -> service.getTasksForMember(1L));
     }
 }

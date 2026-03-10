@@ -68,7 +68,9 @@ public abstract class IntegrationTestBase {
                         id        INTEGER PRIMARY KEY AUTOINCREMENT,
                         grade     INTEGER NOT NULL,
                         member_id INTEGER NOT NULL,
-                        FOREIGN KEY (member_id) REFERENCES team_members(id) ON DELETE CASCADE
+                        task_id   INTEGER NOT NULL UNIQUE,
+                        FOREIGN KEY (member_id) REFERENCES team_members(id) ON DELETE CASCADE,
+                        FOREIGN KEY (task_id)   REFERENCES tasks(id)        ON DELETE CASCADE
                     )""");
         }
 
@@ -81,7 +83,7 @@ public abstract class IntegrationTestBase {
         txManager   = new JdbcTransactionManager(dbManager);
 
         memberService = new TeamMemberService(memberRepo, taskRepo, skillRepo, gradeRepo, txManager);
-        taskService   = new TaskService(taskRepo, txManager);
+        taskService   = new TaskService(taskRepo, gradeRepo, txManager);
     }
 
     @AfterEach

@@ -12,20 +12,31 @@ public class TaskDTO {
     private final String taskName;
     private final TaskStatus status;
     private final String comment;
+    /** The grade awarded for this task, or {@code null} if not yet graded. */
+    private final Integer grade;
 
     /**
-     * Constructs a TaskDTO.
+     * Constructs a TaskDTO without a grade (task not yet completed/graded).
+     */
+    public TaskDTO(long id, String taskName, TaskStatus status, String comment) {
+        this(id, taskName, status, comment, null);
+    }
+
+    /**
+     * Constructs a TaskDTO with an optional grade.
      *
      * @param id       the task's database ID
      * @param taskName the task name
      * @param status   the current task status
      * @param comment  optional comment (never {@code null}; use empty string)
+     * @param grade    the grade for this task, or {@code null} if not graded
      */
-    public TaskDTO(long id, String taskName, TaskStatus status, String comment) {
+    public TaskDTO(long id, String taskName, TaskStatus status, String comment, Integer grade) {
         this.id = id;
         this.taskName = taskName;
         this.status = status;
         this.comment = comment;
+        this.grade = grade;
     }
 
     /** @return the task's database ID */
@@ -39,4 +50,7 @@ public class TaskDTO {
 
     /** @return the task comment (never {@code null}) */
     public String getComment() { return comment; }
+
+    /** @return the grade for this task, or {@code null} if not yet graded */
+    public Integer getGrade() { return grade; }
 }

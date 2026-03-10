@@ -202,62 +202,6 @@ public class TeamMemberService {
         }
     }
 
-    /**
-     * Adds a grade to a team member's grade history.
-     *
-     * @param memberId the member's database ID
-     * @param grade    the grade value (must be within {@link AppConfig#getGradeMin()}–{@link AppConfig#getGradeMax()})
-     * @throws ValidationException if the grade is out of range
-     * @throws HRAppException      on database error
-     */
-    public void addGrade(long memberId, int grade) {
-        if (grade < AppConfig.getGradeMin() || grade > AppConfig.getGradeMax()) {
-            throw new ValidationException(
-                    "Grade must be between " + AppConfig.getGradeMin() + " and " + AppConfig.getGradeMax() + ".");
-        }
-        try {
-            gradeRepo.save(grade, memberId);
-        } catch (SQLException e) {
-            log.error("Failed to add grade for member id={}", memberId, e);
-            throw new HRAppException("Failed to add grade.", e);
-        }
-    }
-
-    /**
-     * Removes a grade by its row ID.
-     *
-     * @param gradeId the grade row's database ID
-     * @throws HRAppException on database error
-     */
-    public void removeGrade(int gradeId) {
-        try {
-            gradeRepo.deleteById(gradeId);
-        } catch (SQLException e) {
-            log.error("Failed to remove grade id={}", gradeId, e);
-            throw new HRAppException("Failed to remove grade.", e);
-        }
-    }
-
-    /**
-     * Updates the value of an existing grade row.
-     *
-     * @param gradeId  the grade row's database ID
-     * @param newGrade the new grade value (must be within {@link AppConfig#getGradeMin()}–{@link AppConfig#getGradeMax()})
-     * @throws ValidationException if the grade is out of range
-     * @throws HRAppException      on database error
-     */
-    public void updateGrade(int gradeId, int newGrade) {
-        if (newGrade < AppConfig.getGradeMin() || newGrade > AppConfig.getGradeMax()) {
-            throw new ValidationException(
-                    "Grade must be between " + AppConfig.getGradeMin() + " and " + AppConfig.getGradeMax() + ".");
-        }
-        try {
-            gradeRepo.updateById(gradeId, newGrade);
-        } catch (SQLException e) {
-            log.error("Failed to update grade id={}", gradeId, e);
-            throw new HRAppException("Failed to update grade.", e);
-        }
-    }
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
@@ -269,21 +213,30 @@ public class TeamMemberService {
      */
     private TeamMemberDTO buildDTO(TeamMember member) {
         try {
-            List<Task> tasks          = taskRepo.findByMemberId(member.getId());
-            List<String> skills       = skillRepo.findByMemberId(member.getId());
-            List<Integer> grades      = gradeRepo.findByMemberId(member.getId());
-            List<int[]> gradeEntries  = gradeRepo.findWithIdsByMemberId(member.getId());
+            List<Task> tasks     = taskRepo.findByMemberId(member.getId());
+            List<String> skills  = skillRepo.findByMemberId(member.getId());
+            List<Integer> grades = gradeRepo.findByMemberId(member.getId());
 
             double avg = grades.isEmpty()
                     ? 0
                     : grades.stream().mapToInt(Integer::intValue).average().orElse(0);
 
             List<TaskDTO> taskDTOs = tasks.stream()
-                    .map(t -> new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
+                    .map(t -> {
+                        Integer grade = null;
+                        if (t.getStatus() == com.example.model.TaskStatus.COMPLETED) {
+                            try {
+                                grade = gradeRepo.findByTaskId(t.getId());
+                            } catch (SQLException e) {
+                                log.warn("Could not load grade for task id={}", t.getId(), e);
+                            }
+                        }
+                        return new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment(), grade);
+                    })
                     .collect(Collectors.toList());
 
             return new TeamMemberDTO(member.getId(), member.getName(), member.getSurname(),
-                    avg, taskDTOs, skills, grades, gradeEntries);
+                    avg, taskDTOs, skills, grades);
         } catch (SQLException e) {
             log.error("Failed to build DTO for member id={}", member.getId(), e);
             throw new HRAppException("Failed to load member details.", e);

@@ -1,9 +1,13 @@
 package com.example.service;
 
+import com.example.config.AppConfig;
 import com.example.dto.CreateUpdateTaskDTO;
 import com.example.dto.TaskDTO;
 import com.example.exception.HRAppException;
+import com.example.exception.ValidationException;
 import com.example.model.Task;
+import com.example.model.TaskStatus;
+import com.example.repository.GradeRepository;
 import com.example.repository.TaskRepository;
 import com.example.repository.TransactionManager;
 import org.slf4j.Logger;
@@ -16,40 +20,33 @@ import java.util.stream.Collectors;
 /**
  * Service layer for task operations.
  * <p>
- * Keeps task business logic separate from team member concerns.
- * The service does not access the database directly — all DB calls
- * go through the injected {@link TaskRepository}.
+ * When a task is updated to {@link TaskStatus#COMPLETED} a grade must be supplied and
+ * is saved atomically with the task update. If a task moves away from COMPLETED its
+ * grade is automatically removed.
  */
 public class TaskService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
 
-    private final TaskRepository taskRepo;
+    private final TaskRepository     taskRepo;
+    private final GradeRepository    gradeRepo;
     private final TransactionManager transactionManager;
 
-    /**
-     * Constructs the service with the required repository and transaction manager
-     * (constructor injection).
-     *
-     * @param taskRepo  repository for task data
-     * @param transactionManager transaction manager for multi-step operations
-     */
-    public TaskService(TaskRepository taskRepo, TransactionManager transactionManager) {
-        this.taskRepo   = taskRepo;
-        this.transactionManager = transactionManager;
+    public TaskService(TaskRepository taskRepo,
+                       GradeRepository gradeRepo,
+                       TransactionManager transactionManager) {
+        this.taskRepo            = taskRepo;
+        this.gradeRepo           = gradeRepo;
+        this.transactionManager  = transactionManager;
     }
 
     /**
-     * Returns all non-deleted tasks for the given member.
-     *
-     * @param memberId the owning member's database ID
-     * @return list of task DTOs
-     * @throws HRAppException on database error
+     * Returns all non-deleted tasks for the given member, each with its grade if present.
      */
     public List<TaskDTO> getTasksForMember(long memberId) {
         try {
             return taskRepo.findByMemberId(memberId).stream()
-                    .map(t -> new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
+                    .map(t -> toDTO(t))
                     .collect(Collectors.toList());
         } catch (SQLException e) {
             log.error("Failed to load tasks for member id={}", memberId, e);
@@ -58,14 +55,14 @@ public class TaskService {
     }
 
     /**
-     * Creates a new task for the given member and returns the persisted task DTO.
-     *
-     * @param memberId the owning member's database ID
-     * @param dto      validated input DTO
-     * @return the created task as a DTO (with generated id)
-     * @throws HRAppException on database error
+     * Creates a new task for the given member. New tasks are always PENDING — a grade
+     * cannot be assigned at creation time.
      */
     public TaskDTO addTask(long memberId, CreateUpdateTaskDTO dto) {
+        if (dto.getStatus() == TaskStatus.COMPLETED) {
+            throw new ValidationException("A new task cannot be created as COMPLETED. " +
+                    "Create it as PENDING and then mark it complete to assign a grade.");
+        }
         try {
             Task task = new Task(dto.getTaskName());
             task.setComment(dto.getComment());
@@ -80,22 +77,63 @@ public class TaskService {
     }
 
     /**
-     * Updates a task's name, comment, and status, and returns the refreshed DTO.
+     * Updates a task. Rules:
+     * <ul>
+     *   <li>If the new status is COMPLETED, a {@code grade} must be provided.</li>
+     *   <li>If the task was already COMPLETED and remains COMPLETED, the grade is updated.</li>
+     *   <li>If the task moves away from COMPLETED, its grade is deleted.</li>
+     * </ul>
      *
-     * @param taskId the task's database ID
-     * @param dto    validated input DTO with new values
-     * @return the updated task as a DTO
-     * @throws HRAppException on database error
+     * @param memberId the owning member's id (needed to save a new grade)
+     * @param taskId   the task's database ID
+     * @param dto      validated input DTO
+     * @param grade    required when {@code dto.getStatus() == COMPLETED}, ignored otherwise
      */
-    public TaskDTO updateTask(long taskId, CreateUpdateTaskDTO dto) {
+    public TaskDTO updateTask(long memberId, long taskId, CreateUpdateTaskDTO dto, Integer grade) {
+        if (dto.getStatus() == TaskStatus.COMPLETED) {
+            validateGrade(grade);
+        }
         try {
-            Task task = new Task(dto.getTaskName());
-            task.setId(taskId);
-            task.setComment(dto.getComment());
-            task.setStatus(dto.getStatus());
-            taskRepo.update(task);
-            log.info("Updated task id={}", taskId);
-            return new TaskDTO(task.getId(), task.getTaskName(), task.getStatus(), task.getComment());
+            transactionManager.beginTransaction();
+            try {
+                // fetch previous status
+                Task existing = taskRepo.findById(taskId).orElseThrow(
+                        () -> new HRAppException("Task not found: " + taskId));
+                TaskStatus previousStatus = existing.getStatus();
+
+                // update the task row
+                Task updated = new Task(dto.getTaskName());
+                updated.setId(taskId);
+                updated.setComment(dto.getComment());
+                updated.setStatus(dto.getStatus());
+                taskRepo.update(updated);
+
+                // grade bookkeeping
+                if (dto.getStatus() == TaskStatus.COMPLETED) {
+                    if (previousStatus == TaskStatus.COMPLETED) {
+                        // already had a grade — update it
+                        gradeRepo.updateByTaskId(taskId, grade);
+                    } else {
+                        // newly completed — insert grade
+                        gradeRepo.saveForTask(grade, memberId, taskId);
+                    }
+                } else if (previousStatus == TaskStatus.COMPLETED) {
+                    // moved away from COMPLETED — remove the grade
+                    gradeRepo.deleteByTaskId(taskId);
+                }
+
+                transactionManager.commit();
+                log.info("Updated task id={} status={}", taskId, dto.getStatus());
+
+                Integer savedGrade = dto.getStatus() == TaskStatus.COMPLETED ? grade : null;
+                return new TaskDTO(taskId, dto.getTaskName(), dto.getStatus(), dto.getComment(), savedGrade);
+            } catch (HRAppException e) {
+                transactionManager.rollback();
+                throw e;
+            } catch (SQLException e) {
+                transactionManager.rollback();
+                throw e;
+            }
         } catch (SQLException e) {
             log.error("Failed to update task id={}", taskId, e);
             throw new HRAppException("Failed to update task.", e);
@@ -103,18 +141,47 @@ public class TaskService {
     }
 
     /**
-     * Soft-deletes a task.
-     *
-     * @param taskId the task's database ID
-     * @throws HRAppException on database error
+     * Soft-deletes a task and removes its grade (if any).
      */
     public void deleteTask(long taskId) {
         try {
-            taskRepo.softDelete(taskId);
-            log.info("Deleted task id={}", taskId);
+            transactionManager.beginTransaction();
+            try {
+                gradeRepo.deleteByTaskId(taskId);
+                taskRepo.softDelete(taskId);
+                transactionManager.commit();
+                log.info("Deleted task id={}", taskId);
+            } catch (SQLException e) {
+                transactionManager.rollback();
+                throw e;
+            }
         } catch (SQLException e) {
             log.error("Failed to delete task id={}", taskId, e);
             throw new HRAppException("Failed to delete task.", e);
+        }
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private void validateGrade(Integer grade) {
+        if (grade == null) {
+            throw new ValidationException("A grade is required when marking a task as COMPLETED.");
+        }
+        if (grade < AppConfig.getGradeMin() || grade > AppConfig.getGradeMax()) {
+            throw new ValidationException(
+                    "Grade must be between " + AppConfig.getGradeMin() + " and " + AppConfig.getGradeMax() + ".");
+        }
+    }
+
+    private TaskDTO toDTO(Task t) {
+        try {
+            Integer grade = t.getStatus() == TaskStatus.COMPLETED
+                    ? gradeRepo.findByTaskId(t.getId())
+                    : null;
+            return new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment(), grade);
+        } catch (SQLException e) {
+            log.error("Failed to load grade for task id={}", t.getId(), e);
+            throw new HRAppException("Failed to load task grade.", e);
         }
     }
 }

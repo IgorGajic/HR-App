@@ -3,12 +3,13 @@ package com.example.view;
 import com.example.config.AppConfig;
 import com.example.dto.TaskDTO;
 import com.example.dto.TeamMemberDTO;
+import com.example.model.TaskStatus;
 import com.example.service.TaskService;
 import com.example.service.TeamMemberService;
 import com.example.util.AsyncRunner;
 import com.example.view.dialog.AddEditMemberDialog;
 import com.example.view.dialog.AddEditTaskDialog;
-import com.example.view.dialog.AddGradeDialog;
+import com.example.view.dialog.GradeDialog;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -20,57 +21,43 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
+import java.util.Optional;
+
 
 /**
  * Main application window.
- * <p>
- * Layout: SplitPane with a member list on the left and a detail panel
- * (tabs for Tasks, Skills, Grades) on the right. All business operations
- * are delegated to the injected service layer — no logic lives in this class.
+ * Layout: SplitPane — member list on the left, detail panel (Tasks + Skills tabs) on the right.
+ * Grades are assigned automatically when a task is marked COMPLETED.
  */
 public class MainStage extends Stage {
 
     private final TeamMemberService memberService;
-    private final TaskService taskService;
+    private final TaskService       taskService;
 
-    // ── Left panel ───────────────────────────────────────────────────────────
+    // ── Left panel ────────────────────────────────────────────────────────────
     private final ObservableList<TeamMemberDTO> memberList = FXCollections.observableArrayList();
     private TableView<TeamMemberDTO> memberTable;
 
-    // ── Right panel — tasks ──────────────────────────────────────────────────
+    // ── Right panel — tasks ───────────────────────────────────────────────────
     private final ObservableList<TaskDTO> taskList = FXCollections.observableArrayList();
     private TableView<TaskDTO> taskTable;
 
-    // ── Right panel — skills ─────────────────────────────────────────────────
+    // ── Right panel — skills ──────────────────────────────────────────────────
     private final ObservableList<String> skillList = FXCollections.observableArrayList();
     private ListView<String> skillListView;
 
-    // ── Right panel — grades ─────────────────────────────────────────────────
-    private final ObservableList<int[]> gradeList = FXCollections.observableArrayList();
-    private ListView<int[]> gradeListView;
-
-    // ── Header labels ────────────────────────────────────────────────────────
+    // ── Header labels ─────────────────────────────────────────────────────────
     private Label memberHeaderLabel;
     private Label avgGradeHeaderLabel;
-    private Label avgGradeDetailLabel;
 
-    /**
-     * Constructs the main stage with all required services (constructor injection).
-     *
-     * @param memberService service for team member operations
-     * @param taskService   service for task operations
-     */
     public MainStage(TeamMemberService memberService, TaskService taskService) {
         this.memberService = memberService;
         this.taskService   = taskService;
         initialise();
     }
 
-    // ── Initialisation ───────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────────────
 
-    /**
-     * Builds the scene graph and loads initial data.
-     */
     private void initialise() {
         setTitle(AppConfig.getAppTitle());
         setWidth(AppConfig.getAppWidth());
@@ -79,73 +66,46 @@ public class MainStage extends Stage {
         BorderPane root = new BorderPane();
         root.setTop(buildToolBar());
         root.setCenter(buildMainContent());
-
         setScene(new Scene(root));
-        setOnCloseRequest(e -> {
-            // DatabaseManager.close() is called from Main via shutdown hook
-        });
-
         loadMembers();
     }
 
-    // ── Toolbar ──────────────────────────────────────────────────────────────
+    // ── Toolbar ───────────────────────────────────────────────────────────────
 
-    /**
-     * Builds the top toolbar with member management buttons.
-     *
-     * @return the configured {@link ToolBar}
-     */
     private ToolBar buildToolBar() {
         Button addBtn    = new Button("+ Add Member");
         Button editBtn   = new Button("Edit Member");
         Button deleteBtn = new Button("Delete Member");
-
         addBtn.setOnAction(e    -> handleAddMember());
         editBtn.setOnAction(e   -> handleEditMember());
         deleteBtn.setOnAction(e -> handleDeleteMember());
-
         return new ToolBar(addBtn, editBtn, deleteBtn);
     }
 
-    // ── Main content ─────────────────────────────────────────────────────────
+    // ── Layout ────────────────────────────────────────────────────────────────
 
-    /**
-     * Builds the central SplitPane containing the member list and the detail panel.
-     *
-     * @return the configured {@link SplitPane}
-     */
     private SplitPane buildMainContent() {
-        SplitPane splitPane = new SplitPane(buildMemberListPanel(), buildDetailPanel());
-        splitPane.setDividerPositions(AppConfig.getDividerPosition());
-        return splitPane;
+        SplitPane split = new SplitPane(buildMemberListPanel(), buildDetailPanel());
+        split.setDividerPositions(AppConfig.getDividerPosition());
+        return split;
     }
 
-    // ── Left panel: member list ───────────────────────────────────────────────
-
-    /**
-     * Builds the left panel containing a search field and the team members {@link TableView}.
-     *
-     * @return the configured panel
-     */
     private VBox buildMemberListPanel() {
         Label title = new Label("Team Members");
         title.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
 
-        //Search field
         TextField searchField = new TextField();
         searchField.setPromptText("Search by name…");
 
-        FilteredList<TeamMemberDTO> filteredMembers = new FilteredList<>(memberList, m -> true);
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
-            String filter = newVal == null ? "" : newVal.trim().toLowerCase();
-            filteredMembers.setPredicate(m ->
-                filter.isEmpty() ||
-                m.getName().toLowerCase().contains(filter) ||
-                m.getSurname().toLowerCase().contains(filter)
-            );
+        FilteredList<TeamMemberDTO> filtered = new FilteredList<>(memberList, m -> true);
+        searchField.textProperty().addListener((obs, o, n) -> {
+            String f = n == null ? "" : n.trim().toLowerCase();
+            filtered.setPredicate(m -> f.isEmpty()
+                    || m.getName().toLowerCase().contains(f)
+                    || m.getSurname().toLowerCase().contains(f));
         });
 
-        memberTable = new TableView<>(filteredMembers);
+        memberTable = new TableView<>(filtered);
         memberTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         memberTable.setPlaceholder(new Label("No team members yet."));
 
@@ -170,7 +130,7 @@ public class MainStage extends Stage {
 
         memberTable.getColumns().addAll(nameCol, surnameCol, avgCol, tasksCol);
         memberTable.getSelectionModel().selectedItemProperty()
-                .addListener((obs, old, selected) -> onMemberSelected(selected));
+                .addListener((obs, old, sel) -> onMemberSelected(sel));
 
         VBox panel = new VBox(8, title, searchField, memberTable);
         panel.setPadding(new Insets(10));
@@ -178,15 +138,8 @@ public class MainStage extends Stage {
         return panel;
     }
 
-    // ── Right panel: detail view ──────────────────────────────────────────────
-
-    /**
-     * Builds the right detail panel with a header and a tabbed content area.
-     *
-     * @return the configured panel
-     */
     private VBox buildDetailPanel() {
-        memberHeaderLabel  = new Label("Select a team member");
+        memberHeaderLabel   = new Label("Select a team member");
         memberHeaderLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
         avgGradeHeaderLabel = new Label("");
 
@@ -195,7 +148,7 @@ public class MainStage extends Stage {
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        tabs.getTabs().addAll(buildTasksTab(), buildSkillsTab(), buildGradesTab());
+        tabs.getTabs().addAll(buildTasksTab(), buildSkillsTab());
 
         VBox panel = new VBox(10, header, tabs);
         panel.setPadding(new Insets(10));
@@ -203,11 +156,6 @@ public class MainStage extends Stage {
         return panel;
     }
 
-    /**
-     * Builds the Tasks tab with a task table and action buttons.
-     *
-     * @return the configured {@link Tab}
-     */
     private Tab buildTasksTab() {
         taskTable = new TableView<>(taskList);
         taskTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -219,15 +167,20 @@ public class MainStage extends Stage {
         TableColumn<TaskDTO, String> statusCol = new TableColumn<>("Status");
         statusCol.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getStatus().name()));
 
+        TableColumn<TaskDTO, String> gradeCol = new TableColumn<>("Grade");
+        gradeCol.setCellValueFactory(d -> {
+            Integer g = d.getValue().getGrade();
+            return new SimpleStringProperty(g != null ? String.valueOf(g) : "—");
+        });
+
         TableColumn<TaskDTO, String> commentCol = new TableColumn<>("Comment");
         commentCol.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getComment()));
 
-        taskTable.getColumns().addAll(nameCol, statusCol, commentCol);
+        taskTable.getColumns().addAll(nameCol, statusCol, gradeCol, commentCol);
 
         Button addBtn    = new Button("Add Task");
         Button editBtn   = new Button("Edit Task");
         Button deleteBtn = new Button("Delete Task");
-
         addBtn.setOnAction(e    -> handleAddTask());
         editBtn.setOnAction(e   -> handleEditTask());
         deleteBtn.setOnAction(e -> handleDeleteTask());
@@ -238,21 +191,14 @@ public class MainStage extends Stage {
         VBox content = new VBox(8, taskTable, buttons);
         content.setPadding(new Insets(10));
         VBox.setVgrow(taskTable, Priority.ALWAYS);
-
         return new Tab("Tasks", content);
     }
 
-    /**
-     * Builds the Skills tab with a skill list and action buttons.
-     *
-     * @return the configured {@link Tab}
-     */
     private Tab buildSkillsTab() {
         skillListView = new ListView<>(skillList);
 
         Button addBtn    = new Button("Add Skill");
         Button removeBtn = new Button("Remove Skill");
-
         addBtn.setOnAction(e    -> handleAddSkill());
         removeBtn.setOnAction(e -> handleRemoveSkill());
 
@@ -262,51 +208,11 @@ public class MainStage extends Stage {
         VBox content = new VBox(8, skillListView, buttons);
         content.setPadding(new Insets(10));
         VBox.setVgrow(skillListView, Priority.ALWAYS);
-
         return new Tab("Skills", content);
-    }
-
-    /**
-     * Builds the Grades tab with a grade list, an average label, and add/edit/remove buttons.
-     *
-     * @return the configured {@link Tab}
-     */
-    private Tab buildGradesTab() {
-        gradeListView = new ListView<>(gradeList);
-        gradeListView.setCellFactory(lv -> new ListCell<>() {
-            @Override
-            protected void updateItem(int[] entry, boolean empty) {
-                super.updateItem(entry, empty);
-                setText(empty || entry == null ? null : String.valueOf(entry[1]));
-            }
-        });
-
-        avgGradeDetailLabel = new Label("Average: N/A");
-        avgGradeDetailLabel.setStyle("-fx-font-size: 13; -fx-font-weight: bold;");
-
-        Button addBtn    = new Button("Add Grade");
-        Button editBtn   = new Button("Edit Grade");
-        Button removeBtn = new Button("Remove Grade");
-
-        addBtn.setOnAction(e    -> handleAddGrade());
-        editBtn.setOnAction(e   -> handleEditGrade());
-        removeBtn.setOnAction(e -> handleRemoveGrade());
-
-        HBox buttons = new HBox(8, addBtn, editBtn, removeBtn);
-        buttons.setPadding(new Insets(5, 0, 0, 0));
-
-        VBox content = new VBox(8, gradeListView, avgGradeDetailLabel, buttons);
-        content.setPadding(new Insets(10));
-        VBox.setVgrow(gradeListView, Priority.ALWAYS);
-
-        return new Tab("Grades", content);
     }
 
     // ── Data loading ──────────────────────────────────────────────────────────
 
-    /**
-     * Reloads the full member list from the service and restores any prior selection.
-     */
     private void loadMembers() {
         long selectedId = getSelectedMemberId();
         AsyncRunner.run(
@@ -314,17 +220,12 @@ public class MainStage extends Stage {
                 members -> {
                     memberList.setAll(members);
                     restoreSelection(selectedId);
-                }
-        );
+                });
     }
 
-    /**
-     * Refreshes only the currently selected member's data from the database.
-     */
     private void refreshSelectedMember() {
         TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
         if (selected == null) return;
-
         long selectedId = selected.getId();
         AsyncRunner.run(
                 () -> memberService.getMemberById(selectedId),
@@ -335,73 +236,41 @@ public class MainStage extends Stage {
                         memberTable.getSelectionModel().select(index);
                         onMemberSelected(updated);
                     }
-                }
-        );
+                });
     }
 
-    /**
-     * Returns the ID of the currently selected member, or -1 if nothing is selected.
-     *
-     * @return selected member ID or -1
-     */
     private long getSelectedMemberId() {
-        TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
-        return selected != null ? selected.getId() : -1;
+        TeamMemberDTO sel = memberTable.getSelectionModel().getSelectedItem();
+        return sel != null ? sel.getId() : -1;
     }
 
-    /**
-     * Re-selects the member with the given ID after a list reload.
-     *
-     * @param id the ID to re-select, or -1 to skip
-     */
     private void restoreSelection(long id) {
         if (id < 0) return;
-        memberList.stream()
-                .filter(m -> m.getId() == id)
-                .findFirst()
+        memberList.stream().filter(m -> m.getId() == id).findFirst()
                 .ifPresent(m -> {
                     memberTable.getSelectionModel().select(m);
                     onMemberSelected(m);
                 });
     }
 
-    /**
-     * Updates the right panel when a member is selected in the table.
-     *
-     * @param member the newly selected member DTO, or {@code null} if deselected
-     */
     private void onMemberSelected(TeamMemberDTO member) {
         if (member == null) {
             memberHeaderLabel.setText("Select a team member");
             avgGradeHeaderLabel.setText("");
             taskList.clear();
             skillList.clear();
-            gradeList.clear();
             return;
         }
         memberHeaderLabel.setText(member.getName() + " " + member.getSurname());
-        refreshAvgLabels(member.getAverageGrade());
+        String avgText = member.getAverageGrade() == 0 ? "N/A"
+                : String.format("%.1f", member.getAverageGrade());
+        avgGradeHeaderLabel.setText("Avg Grade: " + avgText);
         taskList.setAll(member.getTasks());
         skillList.setAll(member.getSkills());
-        gradeList.setAll(member.getGradeEntries());
-    }
-
-    /**
-     * Updates the average grade labels in both the header and the Grades tab.
-     *
-     * @param avg the average grade value (0 means no grades)
-     */
-    private void refreshAvgLabels(double avg) {
-        String text = avg == 0 ? "N/A" : String.format("%.1f", avg);
-        avgGradeHeaderLabel.setText("Avg Grade: " + text);
-        if (avgGradeDetailLabel != null) {
-            avgGradeDetailLabel.setText("Average: " + text);
-        }
     }
 
     // ── Member handlers ───────────────────────────────────────────────────────
 
-    /** Opens the add-member dialog and persists the result. */
     private void handleAddMember() {
         new AddEditMemberDialog(null).showAndWait().ifPresent(dto ->
                 AsyncRunner.run(
@@ -410,189 +279,130 @@ public class MainStage extends Stage {
                             memberList.add(newMember);
                             memberTable.getSelectionModel().select(newMember);
                             onMemberSelected(newMember);
-                        }
-                )
-        );
+                        }));
     }
 
     private void handleEditMember() {
-        TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
-        if (selected == null) { showWarning("Please select a team member to edit."); return; }
-
-        new AddEditMemberDialog(selected).showAndWait().ifPresent(dto ->
+        TeamMemberDTO sel = memberTable.getSelectionModel().getSelectedItem();
+        if (sel == null) { showWarning("Please select a team member to edit."); return; }
+        new AddEditMemberDialog(sel).showAndWait().ifPresent(dto ->
                 AsyncRunner.run(
-                        () -> memberService.updateMember(selected.getId(), dto),
+                        () -> memberService.updateMember(sel.getId(), dto),
                         updated -> {
-                            int index = memberList.indexOf(selected);
-                            if (index >= 0) {
-                                memberList.set(index, updated);
-                                memberTable.getSelectionModel().select(index);
+                            int idx = memberList.indexOf(sel);
+                            if (idx >= 0) {
+                                memberList.set(idx, updated);
+                                memberTable.getSelectionModel().select(idx);
                                 onMemberSelected(updated);
                             }
-                        }
-                )
-        );
+                        }));
     }
 
-    /** Confirms and soft-deletes the selected member. */
     private void handleDeleteMember() {
-        TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
-        if (selected == null) { showWarning("Please select a team member to delete."); return; }
-
+        TeamMemberDTO sel = memberTable.getSelectionModel().getSelectedItem();
+        if (sel == null) { showWarning("Please select a team member to delete."); return; }
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Delete " + selected.getName() + " " + selected.getSurname() + " and all their tasks?",
+                "Delete " + sel.getName() + " " + sel.getSurname() + " and all their tasks?",
                 ButtonType.YES, ButtonType.NO);
         confirm.setTitle("Confirm Delete");
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
                 AsyncRunner.run(
-                        () -> memberService.deleteMember(selected.getId()),
+                        () -> memberService.deleteMember(sel.getId()),
                         () -> {
-                            memberList.remove(selected);
-                            if (!memberList.isEmpty()) {
-                                memberTable.getSelectionModel().selectFirst();
-                            } else {
-                                clearDetailPanel();
-                            }
-                        }
-                );
+                            memberList.remove(sel);
+                            if (!memberList.isEmpty()) memberTable.getSelectionModel().selectFirst();
+                            else clearDetailPanel();
+                        });
             }
         });
     }
 
     // ── Task handlers ─────────────────────────────────────────────────────────
 
-    /** Opens the add-task dialog and persists the result for the selected member. */
     private void handleAddTask() {
         TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
         if (member == null) { showWarning("Please select a team member first."); return; }
-
         new AddEditTaskDialog(null).showAndWait().ifPresent(dto ->
                 AsyncRunner.run(
                         () -> taskService.addTask(member.getId(), dto),
-                        this::refreshSelectedMember
-                )
-        );
+                        result -> refreshSelectedMember()));
     }
 
-    /** Opens the edit-task dialog for the selected task and persists the result. */
+    /**
+     * Opens the edit-task dialog. If the user selects COMPLETED, a grade dialog is shown
+     * immediately after. The grade is then passed to the service together with the task update.
+     */
     private void handleEditTask() {
         TaskDTO selected = taskTable.getSelectionModel().getSelectedItem();
         if (selected == null) { showWarning("Please select a task to edit."); return; }
 
-        new AddEditTaskDialog(selected).showAndWait().ifPresent(dto ->
-                AsyncRunner.run(
-                        () -> taskService.updateTask(selected.getId(), dto),
-                        this::refreshSelectedMember
-                )
-        );
+        TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
+
+        new AddEditTaskDialog(selected).showAndWait().ifPresent(dto -> {
+            Integer grade = null;
+
+            if (dto.getStatus() == TaskStatus.COMPLETED) {
+                // Ask for a grade — pre-fill with existing grade if already completed
+                Integer existing = selected.getGrade();
+                Optional<Integer> gradeOpt = new GradeDialog(
+                        member.getName() + " " + member.getSurname(),
+                        selected.getTaskName(),
+                        existing).showAndWait();
+
+                if (gradeOpt.isEmpty()) return; // user cancelled grade dialog — abort whole edit
+                grade = gradeOpt.get();
+            }
+
+            final Integer finalGrade = grade;
+            AsyncRunner.run(
+                    () -> taskService.updateTask(member.getId(), selected.getId(), dto, finalGrade),
+                    result -> refreshSelectedMember());
+        });
     }
 
-    /** Confirms and soft-deletes the selected task. */
     private void handleDeleteTask() {
-        TaskDTO selected = taskTable.getSelectionModel().getSelectedItem();
-        if (selected == null) { showWarning("Please select a task to delete."); return; }
-
-        AsyncRunner.run(
-                () -> taskService.deleteTask(selected.getId()),
-                this::refreshSelectedMember
-        );
+        TaskDTO sel = taskTable.getSelectionModel().getSelectedItem();
+        if (sel == null) { showWarning("Please select a task to delete."); return; }
+        AsyncRunner.run(() -> taskService.deleteTask(sel.getId()), this::refreshSelectedMember);
     }
 
     // ── Skill handlers ────────────────────────────────────────────────────────
 
-    /** Prompts for a skill name and adds it to the selected member. */
     private void handleAddSkill() {
         TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
         if (member == null) { showWarning("Please select a team member first."); return; }
-
         TextInputDialog dialog = new TextInputDialog();
         dialog.setTitle("Add Skill");
         dialog.setHeaderText("Add a skill for " + member.getName() + " " + member.getSurname() + ".");
         dialog.setContentText("Skill name:");
-
         dialog.showAndWait().ifPresent(skill -> {
             if (!skill.trim().isEmpty()) {
                 AsyncRunner.run(
                         () -> memberService.addSkill(member.getId(), skill),
-                        this::refreshSelectedMember
-                );
+                        this::refreshSelectedMember);
             }
         });
     }
 
-    /** Removes the selected skill from the selected member. */
     private void handleRemoveSkill() {
-        TeamMemberDTO member        = memberTable.getSelectionModel().getSelectedItem();
-        String        selectedSkill = skillListView.getSelectionModel().getSelectedItem();
-        if (selectedSkill == null) { showWarning("Please select a skill to remove."); return; }
-
-        AsyncRunner.run(
-                () -> memberService.removeSkill(member.getId(), selectedSkill),
-                this::refreshSelectedMember
-        );
-    }
-
-    // ── Grade handlers ────────────────────────────────────────────────────────
-
-    /** Opens the add-grade dialog and persists the result for the selected member. */
-    private void handleAddGrade() {
         TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
-        if (member == null) { showWarning("Please select a team member first."); return; }
-
-        new AddGradeDialog(member.getName() + " " + member.getSurname())
-                .showAndWait().ifPresent(grade ->
-                        AsyncRunner.run(
-                                () -> memberService.addGrade(member.getId(), grade),
-                                this::refreshSelectedMember
-                        )
-                );
-    }
-
-    /** Opens the edit-grade dialog for the selected grade and persists the result. */
-    private void handleEditGrade() {
-        int[] selected = gradeListView.getSelectionModel().getSelectedItem();
-        if (selected == null) { showWarning("Please select a grade to edit."); return; }
-
-        TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
-        new AddGradeDialog(member.getName() + " " + member.getSurname())
-                .showAndWait().ifPresent(newGrade ->
-                        AsyncRunner.run(
-                                () -> memberService.updateGrade(selected[0], newGrade),
-                                this::loadMembers
-                        )
-                );
-    }
-
-    /** Confirms and removes the selected grade. */
-    private void handleRemoveGrade() {
-        int[] selected = gradeListView.getSelectionModel().getSelectedItem();
-        if (selected == null) { showWarning("Please select a grade to remove."); return; }
-
+        String skill = skillListView.getSelectionModel().getSelectedItem();
+        if (skill == null) { showWarning("Please select a skill to remove."); return; }
         AsyncRunner.run(
-                () -> memberService.removeGrade(selected[0]),
-                this::loadMembers
-        );
+                () -> memberService.removeSkill(member.getId(), skill),
+                this::refreshSelectedMember);
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
 
-    /**
-     * Clears all detail-panel data (called after a member is deleted).
-     */
     private void clearDetailPanel() {
         memberHeaderLabel.setText("Select a team member");
         avgGradeHeaderLabel.setText("");
         taskList.clear();
         skillList.clear();
-        gradeList.clear();
     }
 
-    /**
-     * Shows a simple warning dialog with the given message.
-     *
-     * @param message the message to display
-     */
     private void showWarning(String message) {
         Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
         alert.setTitle("Action Required");

@@ -183,19 +183,12 @@ public class TeamMemberRepository {
                 }
 
                 int gradeId = rs.getInt("grade_id");
-                int grade = rs.getInt("grade");
+                int grade   = rs.getInt("grade");
 
-                // Check if gradeId is valid and grade is not null
-                if (gradeId != 0 && !rs.wasNull()) {
-
+                // Each grade row is unique per task — add value once per grade row id
+                if (gradeId != 0 && !rs.wasNull() && !data.taskGradeIds.contains(gradeId)) {
                     data.grades.add(grade);
-
-                    // Add to gradeEntries if not already added
-                    boolean alreadyExists = data.gradeEntries.stream()
-                            .anyMatch(e -> e[0] == gradeId);
-                    if (!alreadyExists) {
-                        data.gradeEntries.add(new int[]{gradeId, grade});
-                    }
+                    data.taskGradeIds.add(gradeId);
                 }
             }
         }
@@ -218,7 +211,7 @@ public class TeamMemberRepository {
                 .map(t -> new TaskDTO(t.getId(), t.getTaskName(), t.getStatus(), t.getComment()))
                 .collect(Collectors.toList());
 
-        return new TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades, data.gradeEntries);
+        return new TeamMemberDTO(data.id, data.name, data.surname, avg, taskDTOs, data.skills, data.grades);
     }
 
     /**
@@ -231,7 +224,7 @@ public class TeamMemberRepository {
         List<Task> tasks = new ArrayList<>();
         List<String> skills = new ArrayList<>();
         List<Integer> grades = new ArrayList<>();
-        List<int[]> gradeEntries = new ArrayList<>();
+        Set<Integer> taskGradeIds = new HashSet<>();
 
         MemberData(long id, String name, String surname) {
             this.id = id;
