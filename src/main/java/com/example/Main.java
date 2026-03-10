@@ -2,11 +2,13 @@ package com.example;
 
 import com.example.repository.DatabaseManager;
 import com.example.repository.GradeRepository;
+import com.example.repository.JdbcTransactionManager;
 import com.example.repository.SkillRepository;
 import com.example.repository.TaskRepository;
 import com.example.repository.TeamMemberRepository;
 import com.example.service.TaskService;
 import com.example.service.TeamMemberService;
+import com.example.repository.TransactionManager;
 import com.example.view.MainStage;
 import javafx.application.Application;
 import javafx.stage.Stage;
@@ -42,6 +44,7 @@ public class Main extends Application {
     public void start(Stage stage) {
         // ── Infrastructure ───────────────────────────────────────────────────
         dbManager = DatabaseManager.getInstance();
+        TransactionManager txManager = new JdbcTransactionManager(dbManager);
 
         // ── Repositories ─────────────────────────────────────────────────────
         TeamMemberRepository memberRepo = new TeamMemberRepository(dbManager);
@@ -50,8 +53,8 @@ public class Main extends Application {
         GradeRepository      gradeRepo  = new GradeRepository(dbManager);
 
         // ── Services ─────────────────────────────────────────────────────────
-        TeamMemberService memberService = new TeamMemberService(memberRepo, taskRepo, skillRepo, gradeRepo);
-        TaskService       taskService   = new TaskService(taskRepo);
+        TeamMemberService memberService = new TeamMemberService(memberRepo, taskRepo, skillRepo, gradeRepo, txManager);
+        TaskService       taskService   = new TaskService(taskRepo, txManager);
 
         // ── View ─────────────────────────────────────────────────────────────
         MainStage mainStage = new MainStage(memberService, taskService);

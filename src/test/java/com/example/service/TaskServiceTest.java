@@ -6,6 +6,7 @@ import com.example.exception.ValidationException;
 import com.example.model.Task;
 import com.example.model.TaskStatus;
 import com.example.repository.TaskRepository;
+import com.example.repository.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,14 +29,15 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
 
-    @Mock private TaskRepository taskRepo;
+    @Mock private TaskRepository     taskRepo;
+    @Mock private TransactionManager txManager;
 
     private TaskService service;
 
     /** Sets up the service with a mocked repository before each test. */
     @BeforeEach
     void setUp() {
-        service = new TaskService(taskRepo);
+        service = new TaskService(taskRepo, txManager);
     }
 
     // ── addTask ───────────────────────────────────────────────────────────────

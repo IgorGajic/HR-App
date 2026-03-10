@@ -10,6 +10,7 @@ import com.example.repository.GradeRepository;
 import com.example.repository.SkillRepository;
 import com.example.repository.TaskRepository;
 import com.example.repository.TeamMemberRepository;
+import com.example.repository.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,13 +40,14 @@ class TeamMemberServiceTest {
     @Mock private TaskRepository       taskRepo;
     @Mock private SkillRepository      skillRepo;
     @Mock private GradeRepository      gradeRepo;
+    @Mock private TransactionManager   txManager;
 
     private TeamMemberService service;
 
     /** Sets up the service with mocked repositories before each test. */
     @BeforeEach
     void setUp() {
-        service = new TeamMemberService(memberRepo, taskRepo, skillRepo, gradeRepo);
+        service = new TeamMemberService(memberRepo, taskRepo, skillRepo, gradeRepo, txManager);
     }
 
     // ── createMember ──────────────────────────────────────────────────────────
@@ -124,11 +126,25 @@ class TeamMemberServiceTest {
     // ── deleteMember ──────────────────────────────────────────────────────────
 
     @Test
-    void deleteMember_softDeletesMemberAndTasks() throws SQLException {
+    void deleteMember_softDeletesMemberAndTasksWithinTransaction() throws SQLException {
         service.deleteMember(3L);
 
+        verify(txManager).beginTransaction();
         verify(taskRepo).softDeleteByMemberId(3L);
         verify(memberRepo).softDelete(3L);
+        verify(txManager).commit();
+        verify(txManager, never()).rollback();
+    }
+
+    @Test
+    void deleteMember_onSQLException_rollsBackAndThrowsHRAppException() throws SQLException {
+        doThrow(new SQLException("db error")).when(memberRepo).softDelete(anyLong());
+
+        assertThrows(HRAppException.class, () -> service.deleteMember(1L));
+
+        verify(txManager).beginTransaction();
+        verify(txManager).rollback();
+        verify(txManager, never()).commit();
     }
 
     // ── addGrade ──────────────────────────────────────────────────────────────
@@ -299,16 +315,7 @@ class TeamMemberServiceTest {
                 () -> service.updateMember(1L, CreateUpdateMemberDTO.of("New", "Name")));
     }
 
-    // ── deleteMember – SQLException ───────────────────────────────────────────
-
-    @Test
-    void deleteMember_onSQLException_throwsHRAppException() throws SQLException {
-        doThrow(new SQLException("db error")).when(memberRepo).softDelete(anyLong());
-
-        assertThrows(HRAppException.class, () -> service.deleteMember(1L));
-    }
-
-    // ── addGrade – boundary & SQLException ───────────────────────────────────
+    // ── addGrade ──────────────────────────────────────────────────────────────
 
     @Test
     void addGrade_withMinGrade_savesGrade() throws SQLException {

@@ -9,10 +9,7 @@ import com.example.exception.MemberNotFoundException;
 import com.example.exception.ValidationException;
 import com.example.model.Task;
 import com.example.model.TeamMember;
-import com.example.repository.GradeRepository;
-import com.example.repository.SkillRepository;
-import com.example.repository.TaskRepository;
-import com.example.repository.TeamMemberRepository;
+import com.example.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,23 +32,28 @@ public class TeamMemberService {
     private final TaskRepository taskRepo;
     private final SkillRepository skillRepo;
     private final GradeRepository gradeRepo;
+    private final TransactionManager transactionManager;
 
     /**
-     * Constructs the service with all required repositories (constructor injection).
+     * Constructs the service with all required repositories and transaction manager
+     * (constructor injection).
      *
      * @param memberRepo repository for team member data
      * @param taskRepo   repository for task data
      * @param skillRepo  repository for skill data
      * @param gradeRepo  repository for grade data
+     * @param transactionManager  transaction manager for multi-step operations
      */
     public TeamMemberService(TeamMemberRepository memberRepo,
                              TaskRepository taskRepo,
                              SkillRepository skillRepo,
-                             GradeRepository gradeRepo) {
+                             GradeRepository gradeRepo,
+                             TransactionManager transactionManager) {
         this.memberRepo = memberRepo;
         this.taskRepo   = taskRepo;
         this.skillRepo  = skillRepo;
         this.gradeRepo  = gradeRepo;
+        this.transactionManager = transactionManager;
     }
 
     /**
@@ -137,16 +139,23 @@ public class TeamMemberService {
     }
 
     /**
-     * Soft-deletes a team member and all their tasks.
+     * Soft-deletes a team member and all their tasks atomically.
      *
      * @param id the member's database ID
      * @throws HRAppException on database error
      */
     public void deleteMember(long id) {
         try {
-            taskRepo.softDeleteByMemberId(id);
-            memberRepo.softDelete(id);
-            log.info("Soft-deleted team member id={} and their tasks", id);
+            transactionManager.beginTransaction();
+            try {
+                taskRepo.softDeleteByMemberId(id);
+                memberRepo.softDelete(id);
+                transactionManager.commit();
+                log.info("Soft-deleted team member id={} and their tasks", id);
+            } catch (SQLException e) {
+                transactionManager.rollback();
+                throw e;
+            }
         } catch (SQLException e) {
             log.error("Failed to delete team member id={}", id, e);
             throw new HRAppException("Failed to delete team member.", e);
