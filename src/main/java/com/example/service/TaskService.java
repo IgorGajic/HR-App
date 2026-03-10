@@ -5,6 +5,7 @@ import com.example.dto.TaskDTO;
 import com.example.exception.HRAppException;
 import com.example.model.Task;
 import com.example.repository.TaskRepository;
+import com.example.repository.TransactionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,14 +25,18 @@ public class TaskService {
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
 
     private final TaskRepository taskRepo;
+    private final TransactionManager transactionManager;
 
     /**
-     * Constructs the service with the required repository (constructor injection).
+     * Constructs the service with the required repository and transaction manager
+     * (constructor injection).
      *
-     * @param taskRepo repository for task data
+     * @param taskRepo  repository for task data
+     * @param transactionManager transaction manager for multi-step operations
      */
-    public TaskService(TaskRepository taskRepo) {
-        this.taskRepo = taskRepo;
+    public TaskService(TaskRepository taskRepo, TransactionManager transactionManager) {
+        this.taskRepo   = taskRepo;
+        this.transactionManager = transactionManager;
     }
 
     /**
