@@ -3,9 +3,9 @@ package com.example.view;
 import com.example.config.AppConfig;
 import com.example.dto.TaskDTO;
 import com.example.dto.TeamMemberDTO;
-import com.example.exception.GlobalExceptionHandler;
 import com.example.service.TaskService;
 import com.example.service.TeamMemberService;
+import com.example.util.AsyncRunner;
 import com.example.view.dialog.AddEditMemberDialog;
 import com.example.view.dialog.AddEditTaskDialog;
 import com.example.view.dialog.AddGradeDialog;
@@ -20,8 +20,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Main application window.
@@ -311,13 +309,13 @@ public class MainStage extends Stage {
      */
     private void loadMembers() {
         long selectedId = getSelectedMemberId();
-        try {
-            List<TeamMemberDTO> members = memberService.getAllMembers();
-            memberList.setAll(members);
-        } catch (Exception e) {
-            GlobalExceptionHandler.handle(e);
-        }
-        restoreSelection(selectedId);
+        AsyncRunner.run(
+                memberService::getAllMembers,
+                members -> {
+                    memberList.setAll(members);
+                    restoreSelection(selectedId);
+                }
+        );
     }
 
     /**
@@ -328,20 +326,17 @@ public class MainStage extends Stage {
         if (selected == null) return;
 
         long selectedId = selected.getId();
-        try {
-            TeamMemberDTO updated = memberService.getMemberById(selectedId);
-            // Update the member in the list
-            int index = memberList.indexOf(selected);
-            if (index >= 0) {
-                memberList.set(index, updated);
-                // Re-select the updated member in the table
-                memberTable.getSelectionModel().select(index);
-                // Refresh the detail panel with the updated data
-                onMemberSelected(updated);
-            }
-        } catch (Exception e) {
-            GlobalExceptionHandler.handle(e);
-        }
+        AsyncRunner.run(
+                () -> memberService.getMemberById(selectedId),
+                updated -> {
+                    int index = memberList.indexOf(selected);
+                    if (index >= 0) {
+                        memberList.set(index, updated);
+                        memberTable.getSelectionModel().select(index);
+                        onMemberSelected(updated);
+                    }
+                }
+        );
     }
 
     /**
@@ -408,41 +403,35 @@ public class MainStage extends Stage {
 
     /** Opens the add-member dialog and persists the result. */
     private void handleAddMember() {
-        new AddEditMemberDialog(null).showAndWait().ifPresent(dto -> {
-            try {
-                TeamMemberDTO newMember = memberService.createMember(dto);
-                memberList.add(newMember);
-                // Re-select the newly created member in the table
-                memberTable.getSelectionModel().select(newMember);
-                // Refresh the detail panel with the new member's data
-                onMemberSelected(newMember);
-            } catch (Exception e) {
-                GlobalExceptionHandler.handle(e);
-            }
-        });
+        new AddEditMemberDialog(null).showAndWait().ifPresent(dto ->
+                AsyncRunner.run(
+                        () -> memberService.createMember(dto),
+                        newMember -> {
+                            memberList.add(newMember);
+                            memberTable.getSelectionModel().select(newMember);
+                            onMemberSelected(newMember);
+                        }
+                )
+        );
     }
 
-    /** Opens the edit-member dialog for the selected member and persists the result. */
     private void handleEditMember() {
         TeamMemberDTO selected = memberTable.getSelectionModel().getSelectedItem();
         if (selected == null) { showWarning("Please select a team member to edit."); return; }
 
-        new AddEditMemberDialog(selected).showAndWait().ifPresent(dto -> {
-            try {
-                TeamMemberDTO updated = memberService.updateMember(selected.getId(), dto);
-                // Update only the selected member in the list
-                int index = memberList.indexOf(selected);
-                if (index >= 0) {
-                    memberList.set(index, updated);
-                    // Re-select the updated member in the table
-                    memberTable.getSelectionModel().select(index);
-                    // Refresh the detail panel with the updated data
-                    onMemberSelected(updated);
-                }
-            } catch (Exception e) {
-                GlobalExceptionHandler.handle(e);
-            }
-        });
+        new AddEditMemberDialog(selected).showAndWait().ifPresent(dto ->
+                AsyncRunner.run(
+                        () -> memberService.updateMember(selected.getId(), dto),
+                        updated -> {
+                            int index = memberList.indexOf(selected);
+                            if (index >= 0) {
+                                memberList.set(index, updated);
+                                memberTable.getSelectionModel().select(index);
+                                onMemberSelected(updated);
+                            }
+                        }
+                )
+        );
     }
 
     /** Confirms and soft-deletes the selected member. */
@@ -456,18 +445,17 @@ public class MainStage extends Stage {
         confirm.setTitle("Confirm Delete");
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
-                try {
-                    memberService.deleteMember(selected.getId());
-                    memberList.remove(selected);
-                    // Select the next available member if any exist
-                    if (!memberList.isEmpty()) {
-                        memberTable.getSelectionModel().selectFirst();
-                    } else {
-                        clearDetailPanel();
-                    }
-                } catch (Exception e) {
-                    GlobalExceptionHandler.handle(e);
-                }
+                AsyncRunner.run(
+                        () -> memberService.deleteMember(selected.getId()),
+                        () -> {
+                            memberList.remove(selected);
+                            if (!memberList.isEmpty()) {
+                                memberTable.getSelectionModel().selectFirst();
+                            } else {
+                                clearDetailPanel();
+                            }
+                        }
+                );
             }
         });
     }
@@ -479,14 +467,12 @@ public class MainStage extends Stage {
         TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
         if (member == null) { showWarning("Please select a team member first."); return; }
 
-        new AddEditTaskDialog(null).showAndWait().ifPresent(dto -> {
-            try {
-                taskService.addTask(member.getId(), dto);
-                refreshSelectedMember();
-            } catch (Exception e) {
-                GlobalExceptionHandler.handle(e);
-            }
-        });
+        new AddEditTaskDialog(null).showAndWait().ifPresent(dto ->
+                AsyncRunner.run(
+                        () -> taskService.addTask(member.getId(), dto),
+                        this::refreshSelectedMember
+                )
+        );
     }
 
     /** Opens the edit-task dialog for the selected task and persists the result. */
@@ -494,14 +480,12 @@ public class MainStage extends Stage {
         TaskDTO selected = taskTable.getSelectionModel().getSelectedItem();
         if (selected == null) { showWarning("Please select a task to edit."); return; }
 
-        new AddEditTaskDialog(selected).showAndWait().ifPresent(dto -> {
-            try {
-                taskService.updateTask(selected.getId(), dto);
-                refreshSelectedMember();
-            } catch (Exception e) {
-                GlobalExceptionHandler.handle(e);
-            }
-        });
+        new AddEditTaskDialog(selected).showAndWait().ifPresent(dto ->
+                AsyncRunner.run(
+                        () -> taskService.updateTask(selected.getId(), dto),
+                        this::refreshSelectedMember
+                )
+        );
     }
 
     /** Confirms and soft-deletes the selected task. */
@@ -509,12 +493,10 @@ public class MainStage extends Stage {
         TaskDTO selected = taskTable.getSelectionModel().getSelectedItem();
         if (selected == null) { showWarning("Please select a task to delete."); return; }
 
-        try {
-            taskService.deleteTask(selected.getId());
-            refreshSelectedMember();
-        } catch (Exception e) {
-            GlobalExceptionHandler.handle(e);
-        }
+        AsyncRunner.run(
+                () -> taskService.deleteTask(selected.getId()),
+                this::refreshSelectedMember
+        );
     }
 
     // ── Skill handlers ────────────────────────────────────────────────────────
@@ -531,12 +513,10 @@ public class MainStage extends Stage {
 
         dialog.showAndWait().ifPresent(skill -> {
             if (!skill.trim().isEmpty()) {
-                try {
-                    memberService.addSkill(member.getId(), skill);
-                    refreshSelectedMember();
-                } catch (Exception e) {
-                    GlobalExceptionHandler.handle(e);
-                }
+                AsyncRunner.run(
+                        () -> memberService.addSkill(member.getId(), skill),
+                        this::refreshSelectedMember
+                );
             }
         });
     }
@@ -547,12 +527,10 @@ public class MainStage extends Stage {
         String        selectedSkill = skillListView.getSelectionModel().getSelectedItem();
         if (selectedSkill == null) { showWarning("Please select a skill to remove."); return; }
 
-        try {
-            memberService.removeSkill(member.getId(), selectedSkill);
-            refreshSelectedMember();
-        } catch (Exception e) {
-            GlobalExceptionHandler.handle(e);
-        }
+        AsyncRunner.run(
+                () -> memberService.removeSkill(member.getId(), selectedSkill),
+                this::refreshSelectedMember
+        );
     }
 
     // ── Grade handlers ────────────────────────────────────────────────────────
@@ -563,14 +541,12 @@ public class MainStage extends Stage {
         if (member == null) { showWarning("Please select a team member first."); return; }
 
         new AddGradeDialog(member.getName() + " " + member.getSurname())
-                .showAndWait().ifPresent(grade -> {
-                    try {
-                        memberService.addGrade(member.getId(), grade);
-                        refreshSelectedMember();
-                    } catch (Exception e) {
-                        GlobalExceptionHandler.handle(e);
-                    }
-                });
+                .showAndWait().ifPresent(grade ->
+                        AsyncRunner.run(
+                                () -> memberService.addGrade(member.getId(), grade),
+                                this::refreshSelectedMember
+                        )
+                );
     }
 
     /** Opens the edit-grade dialog for the selected grade and persists the result. */
@@ -580,14 +556,12 @@ public class MainStage extends Stage {
 
         TeamMemberDTO member = memberTable.getSelectionModel().getSelectedItem();
         new AddGradeDialog(member.getName() + " " + member.getSurname())
-                .showAndWait().ifPresent(newGrade -> {
-                    try {
-                        memberService.updateGrade(selected[0], newGrade);
-                        loadMembers();
-                    } catch (Exception e) {
-                        GlobalExceptionHandler.handle(e);
-                    }
-                });
+                .showAndWait().ifPresent(newGrade ->
+                        AsyncRunner.run(
+                                () -> memberService.updateGrade(selected[0], newGrade),
+                                this::loadMembers
+                        )
+                );
     }
 
     /** Confirms and removes the selected grade. */
@@ -595,12 +569,10 @@ public class MainStage extends Stage {
         int[] selected = gradeListView.getSelectionModel().getSelectedItem();
         if (selected == null) { showWarning("Please select a grade to remove."); return; }
 
-        try {
-            memberService.removeGrade(selected[0]);
-            loadMembers();
-        } catch (Exception e) {
-            GlobalExceptionHandler.handle(e);
-        }
+        AsyncRunner.run(
+                () -> memberService.removeGrade(selected[0]),
+                this::loadMembers
+        );
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
